@@ -304,6 +304,10 @@
   background: linear-gradient(180deg, #22d3ee, #fbbf24);
 }
 
+html:not(.theme-light) {
+  color-scheme: dark;
+}
+
 /* ============================================================================
    GLOBAL DAYLIGHT / LIGHT MODE DESIGN SYSTEM (html.theme-light)
    Applies crisp Alabaster/Slate-White surfaces, high-contrast ink typography,
@@ -311,6 +315,7 @@
    and all Modals while keeping 2D racing track canvases authentic.
    ============================================================================ */
 html.theme-light {
+  color-scheme: light;
   --garage-bg-deep: #f1f5f9;
   --garage-bg-elevated: #ffffff;
   --garage-bg-card: rgba(255, 255, 255, 0.94);
@@ -361,9 +366,11 @@ html.theme-light :not(.fixed)[class*="bg-black/55"] {
 /* 2. Primary Dark Surfaces -> Crisp Daylight Alabaster & Elevated White Cards */
 html.theme-light [class*="bg-[#030712]"],
 html.theme-light [class*="bg-[#040814]"],
+html.theme-light [class*="bg-[#040915]"],
 html.theme-light [class*="bg-[#050811]"],
 html.theme-light [class*="bg-[#050914]"],
 html.theme-light [class*="bg-[#050A18]"],
+html.theme-light [class*="bg-[#050B16]"],
 html.theme-light [class*="bg-[#050C1A]"],
 html.theme-light [class*="bg-[#060911]"],
 html.theme-light [class*="bg-[#060A15]"],
@@ -375,7 +382,6 @@ html.theme-light [class*="bg-[#060c18]"],
 html.theme-light [class*="bg-[#060D1A]"],
 html.theme-light [class*="bg-[#070B16]"],
 html.theme-light [class*="bg-[#070B18]"],
-html.theme-light [class*="bg-[#070d1b]"],
 html.theme-light [class*="bg-[#080D1A]"],
 html.theme-light [class*="bg-[#090D16]"],
 html.theme-light [class*="bg-[#090E1D]"],
@@ -388,26 +394,43 @@ html.theme-light [class*="bg-slate-900"] {
 
 html.theme-light [class*="bg-[#060D1E]"],
 html.theme-light [class*="bg-[#061226]"],
+html.theme-light [class*="bg-[#070d1b]"],
+html.theme-light [class*="bg-[#070D1B]"],
+html.theme-light [class*="bg-[#070F21]"],
+html.theme-light [class*="bg-[#081022]"],
+html.theme-light [class*="bg-[#081226]"],
+html.theme-light [class*="bg-[#091326]"],
+html.theme-light [class*="bg-[#091428]"],
+html.theme-light [class*="bg-[#09142A]"],
+html.theme-light [class*="bg-[#09152E]"],
 html.theme-light [class*="bg-[#0a1020]"],
+html.theme-light [class*="bg-[#0B0F1A]"],
 html.theme-light [class*="bg-[#0B1120]"],
 html.theme-light [class*="bg-[#0B1224]"],
 html.theme-light [class*="bg-[#0B1324]"],
 html.theme-light [class*="bg-[#0B1326]"],
 html.theme-light [class*="bg-[#0B132B]"],
+html.theme-light [class*="bg-[#0B1528]"],
+html.theme-light [class*="bg-[#0B162C]"],
 html.theme-light [class*="bg-[#0B1730]"],
 html.theme-light [class*="bg-[#0B1E38]"],
 html.theme-light [class*="bg-[#0c162c]"],
 html.theme-light [class*="bg-[#0D1628]"],
+html.theme-light [class*="bg-[#0D1830]"],
+html.theme-light [class*="bg-[#0D1B36]"],
 html.theme-light [class*="bg-[#0E172A]"],
+html.theme-light [class*="bg-[#0E1E3B]"],
 html.theme-light [class*="bg-[#0E2442]"],
 html.theme-light [class*="bg-[#0f1a33]"],
 html.theme-light [class*="bg-[#0F172A]"],
-html.theme-light [class*="bg-[#091326]"],
-html.theme-light [class*="bg-[#091428]"],
+html.theme-light [class*="bg-[#0F1D3D]"],
+html.theme-light [class*="bg-[#111827]"],
 html.theme-light [class*="bg-[#111C33]"],
 html.theme-light [class*="bg-[#121B35]"],
 html.theme-light [class*="bg-[#131C33]"],
 html.theme-light [class*="bg-[#131F38]"],
+html.theme-light [class*="bg-[#132240]"],
+html.theme-light [class*="bg-[#152648]"],
 html.theme-light [class*="bg-[#162032]"],
 html.theme-light [class*="bg-[#162038]"],
 html.theme-light [class*="bg-[#162238]"],

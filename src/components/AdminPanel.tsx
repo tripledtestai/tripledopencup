@@ -1,19 +1,15 @@
 import {
+  Award,
   Ban,
-  BarChart3,
   BookmarkCheck,
   Check,
   CheckCircle2,
-  ChevronDown,
   ClipboardList,
   Coins,
   Copy,
   Download,
-  Flame,
   History,
   Key,
-  Layers,
-  Minus,
   Plus,
   RefreshCw,
   Save,
@@ -22,30 +18,46 @@ import {
   Trash2,
   Trophy,
   Upload,
-  UserCheck,
-  UserX,
   Users,
 } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { getRankByRP } from '../game/rules';
-import { GameSaveCheckpoint, Giftcode, StudentAccount } from '../game/types';
+import {
+  GameSaveCheckpoint,
+  Giftcode,
+  LobbyConfig,
+  StudentAccount,
+  TournamentRewardConfig,
+} from '../game/types';
 import { dualDB } from '../services/database';
 import { soundEngine } from '../services/sound';
 import { RankAvatarFrame, RankCrest } from './RankBadge';
 import { TeacherNavHeader, TeacherWorkspaceTab } from './TeacherNavHeader';
 
+const DEFAULT_TOURNAMENT_REWARDS: TournamentRewardConfig = {
+  top1Coins: 100,
+  top2Coins: 70,
+  top3Coins: 50,
+  top10Coins: 30,
+  finishCoins: 15,
+  teamWinBonusCoins: 30,
+};
+
 interface AdminPanelProps {
   students: StudentAccount[];
   giftcodes: Giftcode[];
   teacherProfile: StudentAccount;
+  lobby?: LobbyConfig;
   fbConnected: boolean;
+  isNightMode?: boolean;
+  onToggleNightMode?: () => void;
   onSelectTeacherTab: (tab: TeacherWorkspaceTab) => void;
   onOpenFirebaseModal: () => void;
   onOpenSettings?: () => void;
   onLogout: () => void;
 }
 
-type AdminSection = 'students' | 'giftcodes' | 'checkpoints';
+type AdminSection = 'students' | 'giftcodes' | 'rewards' | 'checkpoints';
 type StudentFilter = 'all' | 'active' | 'banned';
 type StudentSort = 'rp_desc' | 'coins_desc' | 'matches_desc' | 'name_asc';
 
@@ -53,7 +65,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   students,
   giftcodes,
   teacherProfile,
+  lobby,
   fbConnected,
+  isNightMode = true,
+  onToggleNightMode,
   onSelectTeacherTab,
   onOpenFirebaseModal,
   onOpenSettings = () => {},
@@ -83,7 +98,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [sortBy, setSortBy] = useState<StudentSort>('rp_desc');
 
   // Student Delete Confirmation
-  const [confirmDeleteEmail, setConfirmDeleteEmail] = useState<string | null>(null);
+  const [confirmDeleteEmail, setConfirmDeleteEmail] = useState<string | null>(
+    null
+  );
 
   // Checkpoints State
   const [checkpointLabel, setCheckpointLabel] = useState('');
@@ -92,11 +109,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const currentLobby = lobby || dualDB.getLobby();
+  const teacherRewards: TournamentRewardConfig =
+    currentLobby.teacherRewards || DEFAULT_TOURNAMENT_REWARDS;
+
   const refreshCheckpoints = () => {
     setCheckpoints(dualDB.getCheckpoints());
   };
 
-  const showStatus = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showStatus = (
+    text: string,
+    type: 'success' | 'error' | 'info' = 'success'
+  ) => {
     setStatusMessage({ text, type });
     window.setTimeout(() => {
       setStatusMessage((cur) => (cur?.text === text ? null : cur));
@@ -125,6 +149,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setCopiedCode(code);
     soundEngine.playCoin();
     setTimeout(() => setCopiedCode(null), 1800);
+  };
+
+  // --- TOURNAMENT REWARD HANDLERS ---
+  const handleUpdateReward = (
+    key: keyof TournamentRewardConfig,
+    val: number
+  ) => {
+    const next: TournamentRewardConfig = {
+      ...teacherRewards,
+      [key]: Math.max(0, Math.min(10000, Math.floor(val))),
+    };
+    dualDB.updateLobby({ teacherRewards: next });
+  };
+
+  const handleApplyRewardPreset = (multiplier: number, label: string) => {
+    dualDB.updateLobby({
+      teacherRewards: {
+        top1Coins: 100 * multiplier,
+        top2Coins: 70 * multiplier,
+        top3Coins: 50 * multiplier,
+        top10Coins: 30 * multiplier,
+        finishCoins: 15 * multiplier,
+        teamWinBonusCoins: 30 * multiplier,
+      },
+    });
+    soundEngine.playCoin();
+    showStatus(`Đã áp dụng mức thưởng giải đấu: ${label}!`, 'success');
   };
 
   // --- CSV EXPORT ---
@@ -172,7 +223,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     soundEngine.playCoin();
-    showStatus('Đã xuất file CSV (Excel) danh sách toàn bộ học sinh thành công!', 'success');
+    showStatus(
+      'Đã xuất file CSV (Excel) danh sách toàn bộ học sinh thành công!',
+      'success'
+    );
   };
 
   // --- SEASON RESET ---
@@ -253,7 +307,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showStatus('Đã tải file Bản Lưu (.json) về máy!', 'success');
   };
 
-  const handleImportCheckpointFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportCheckpointFile = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -276,7 +332,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const totalStudents = students.length;
   const bannedCount = students.filter((s) => s.banned).length;
   const activeCount = totalStudents - bannedCount;
-  const totalCoinsInCirculation = students.reduce((acc, s) => acc + (s.coins || 0), 0);
+  const totalCoinsInCirculation = students.reduce(
+    (acc, s) => acc + (s.coins || 0),
+    0
+  );
   const totalClassRP = students.reduce((acc, s) => acc + (s.rp || 0), 0);
   const topRacer = [...students].sort((a, b) => (b.rp || 0) - (a.rp || 0))[0];
 
@@ -299,19 +358,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     .sort((a, b) => {
       if (sortBy === 'rp_desc') return (b.rp || 0) - (a.rp || 0);
       if (sortBy === 'coins_desc') return (b.coins || 0) - (a.coins || 0);
-      if (sortBy === 'matches_desc') return (b.totalMatches || 0) - (a.totalMatches || 0);
+      if (sortBy === 'matches_desc')
+        return (b.totalMatches || 0) - (a.totalMatches || 0);
       if (sortBy === 'name_asc') return a.username.localeCompare(b.username);
       return 0;
     });
 
   return (
-    <div className="min-h-screen bg-[#040814] text-white p-3 sm:p-5 select-none">
-      <div className="max-w-7xl mx-auto space-y-4">
+    <div
+      style={{ colorScheme: isNightMode ? 'dark' : 'light' }}
+      className="relative min-h-screen bg-[#030712] text-white p-3 sm:p-5 select-none overflow-x-hidden"
+    >
+      {/* Subtle Dark Mode Ambient Glow */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden opacity-40">
+        <div className="absolute -top-40 left-1/4 w-[520px] h-[520px] rounded-full bg-cyan-500/12 blur-[140px]" />
+        <div className="absolute bottom-0 right-1/4 w-[480px] h-[480px] rounded-full bg-amber-500/10 blur-[140px]" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto space-y-4">
         {/* Unified 3-Section Teacher Navigation Bar */}
         <TeacherNavHeader
           activeTab="admin"
           teacherProfile={teacherProfile}
           fbConnected={fbConnected}
+          isNightMode={isNightMode}
+          onToggleNightMode={onToggleNightMode}
           onSelectTab={onSelectTeacherTab}
           onOpenFirebaseModal={onOpenFirebaseModal}
           onOpenSettings={onOpenSettings}
@@ -321,12 +392,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Global Toast / Feedback Banner */}
         {statusMessage && (
           <div
-            className={`p-3.5 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-between shadow-xl transition-all animate-in fade-in ${
+            className={`p-3 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-between shadow-xl transition-all animate-in fade-in ${
               statusMessage.type === 'error'
-                ? 'bg-rose-950/90 border-rose-500 text-rose-200'
+                ? 'bg-rose-950/90 border-rose-500/60 text-rose-200'
                 : statusMessage.type === 'info'
-                ? 'bg-sky-950/90 border-sky-500 text-sky-200'
-                : 'bg-emerald-950/90 border-emerald-500 text-emerald-200'
+                ? 'bg-sky-950/90 border-sky-500/60 text-sky-200'
+                : 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -342,7 +413,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <button
               type="button"
               onClick={() => setStatusMessage(null)}
-              className="text-xs px-2 py-0.5 rounded bg-black/40 hover:bg-black/60 cursor-pointer ml-3 shrink-0"
+              className="text-xs px-2.5 py-0.5 rounded-lg bg-[#040814]/60 hover:bg-[#040814] border border-white/10 cursor-pointer ml-3 shrink-0"
             >
               Đóng
             </button>
@@ -350,12 +421,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
 
         {/* ================================================================= */}
-        {/* EXECUTIVE SUMMARY KPI CARDS (4 Sleek Metrics)                    */}
+        {/* EXECUTIVE SUMMARY KPI CARDS (4 Dark-Mode Optimized Metrics)       */}
         {/* ================================================================= */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Card 1: Total Students */}
-          <div className="p-3.5 rounded-2xl bg-[#091326] border border-cyan-500/30 flex items-center gap-3 shadow-lg">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center shrink-0">
+          <div className="p-3.5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 hover:border-cyan-500/40 flex items-center gap-3 shadow-lg transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-400/30 flex items-center justify-center shrink-0">
               <Users className="w-5 h-5 text-cyan-300" />
             </div>
             <div className="min-w-0 flex-1">
@@ -367,15 +438,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {totalStudents}
                 </span>
                 <span className="text-[11px] text-emerald-400 font-semibold truncate">
-                  {activeCount} active {bannedCount > 0 ? `· ${bannedCount} ban` : ''}
+                  {activeCount} active{' '}
+                  {bannedCount > 0 ? `· ${bannedCount} khóa` : ''}
                 </span>
               </div>
             </div>
           </div>
 
           {/* Card 2: Total RP & Top Racer */}
-          <div className="p-3.5 rounded-2xl bg-[#091326] border border-amber-400/30 flex items-center gap-3 shadow-lg">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-400/40 flex items-center justify-center shrink-0">
+          <div className="p-3.5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 hover:border-amber-500/40 flex items-center gap-3 shadow-lg transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-400/30 flex items-center justify-center shrink-0">
               <Trophy className="w-5 h-5 text-amber-400" />
             </div>
             <div className="min-w-0 flex-1">
@@ -383,11 +455,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 Tổng Điểm RP Lớp
               </div>
               <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="font-mono-num font-black text-xl text-amber-400">
+                <span className="font-mono-num font-black text-xl text-amber-300">
                   {totalClassRP.toLocaleString()}
                 </span>
                 {topRacer && (
-                  <span className="text-[11px] text-amber-200 truncate font-semibold">
+                  <span className="text-[11px] text-amber-200/90 truncate font-semibold">
                     Top 1: {topRacer.username}
                   </span>
                 )}
@@ -396,13 +468,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* Card 3: Total Coins in Circulation */}
-          <div className="p-3.5 rounded-2xl bg-[#091326] border border-yellow-500/30 flex items-center gap-3 shadow-lg">
-            <div className="w-10 h-10 rounded-xl bg-yellow-500/15 border border-yellow-400/40 flex items-center justify-center shrink-0">
+          <div className="p-3.5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 hover:border-yellow-500/40 flex items-center gap-3 shadow-lg transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-400/30 flex items-center justify-center shrink-0">
               <Coins className="w-5 h-5 text-yellow-400" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Tổng Xu Trong Lưu Thông
+                Tổng Xu Lưu Thông
               </div>
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="font-mono-num font-black text-xl text-yellow-300">
@@ -414,8 +486,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* Card 4: Giftcodes Active */}
-          <div className="p-3.5 rounded-2xl bg-[#091326] border border-purple-500/30 flex items-center gap-3 shadow-lg">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-400/40 flex items-center justify-center shrink-0">
+          <div className="p-3.5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 hover:border-purple-500/40 flex items-center gap-3 shadow-lg transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-400/30 flex items-center justify-center shrink-0">
               <Key className="w-5 h-5 text-purple-300" />
             </div>
             <div className="min-w-0 flex-1">
@@ -435,23 +507,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* ================================================================= */}
-        {/* MAIN ADMIN WORKSPACE TABS (Phân chia mục rõ ràng, dễ theo dõi)   */}
+        {/* MAIN ADMIN WORKSPACE TABS (Dark-Mode Pill Switcher)               */}
         {/* ================================================================= */}
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/90 pb-2.5">
           <button
             type="button"
             onClick={() => {
               soundEngine.playCoin();
               setActiveSection('students');
             }}
-            className={`px-4 py-2.5 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border ${
               activeSection === 'students'
-                ? 'bg-cyan-500 text-slate-950 shadow-[0_0_18px_rgba(6,182,212,0.4)]'
-                : 'bg-[#091326] text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+                ? 'bg-cyan-500/20 border-cyan-400/80 text-cyan-200 shadow-[0_0_20px_rgba(34,211,238,0.18)]'
+                : 'bg-[#070D1B]/90 text-slate-400 hover:text-white border-slate-800/90 hover:border-slate-700'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>1. Danh Sách Học Sinh ({students.length})</span>
+            <Users className="w-4 h-4 text-cyan-400" />
+            <span>Danh Sách Học Sinh ({students.length})</span>
           </button>
 
           <button
@@ -460,14 +532,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               soundEngine.playCoin();
               setActiveSection('giftcodes');
             }}
-            className={`px-4 py-2.5 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border ${
               activeSection === 'giftcodes'
-                ? 'bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(245,158,11,0.4)]'
-                : 'bg-[#091326] text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+                ? 'bg-amber-500/20 border-amber-400/80 text-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.18)]'
+                : 'bg-[#070D1B]/90 text-slate-400 hover:text-white border-slate-800/90 hover:border-slate-700'
             }`}
           >
-            <Key className="w-4 h-4" />
-            <span>2. Quản Lý Giftcode ({giftcodes.length})</span>
+            <Key className="w-4 h-4 text-amber-400" />
+            <span>Quản Lý Giftcode ({giftcodes.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playCoin();
+              setActiveSection('rewards');
+            }}
+            className={`px-4 py-2 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border ${
+              activeSection === 'rewards'
+                ? 'bg-emerald-500/20 border-emerald-400/80 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.18)]'
+                : 'bg-[#070D1B]/90 text-slate-400 hover:text-white border-slate-800/90 hover:border-slate-700'
+            }`}
+          >
+            <Award className="w-4 h-4 text-emerald-400" />
+            <span>Cấu Hình Thưởng Giải Đấu</span>
           </button>
 
           <button
@@ -476,14 +564,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               soundEngine.playCoin();
               setActiveSection('checkpoints');
             }}
-            className={`px-4 py-2.5 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-sci font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border ${
               activeSection === 'checkpoints'
-                ? 'bg-purple-500 text-slate-950 shadow-[0_0_18px_rgba(168,85,247,0.4)]'
-                : 'bg-[#091326] text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+                ? 'bg-purple-500/20 border-purple-400/80 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.18)]'
+                : 'bg-[#070D1B]/90 text-slate-400 hover:text-white border-slate-800/90 hover:border-slate-700'
             }`}
           >
-            <BookmarkCheck className="w-4 h-4" />
-            <span>3. Sao Lưu & Mùa Giải</span>
+            <BookmarkCheck className="w-4 h-4 text-purple-400" />
+            <span>Sao Lưu & Mùa Giải</span>
           </button>
         </div>
 
@@ -493,7 +581,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeSection === 'students' && (
           <div className="space-y-3.5 animate-in fade-in duration-150">
             {/* Action Bar: Search, Filters, Sorters & Export */}
-            <div className="p-3.5 rounded-2xl bg-[#070F21] border border-cyan-500/25 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div className="p-3.5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 flex flex-wrap items-center justify-between gap-3 shadow-lg">
               {/* Left: Search Box */}
               <div className="relative flex-1 min-w-[220px] max-w-md">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -506,15 +594,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Center: Status Filters */}
+              {/* Center: Status Filters (Dark-Tinted Pills) */}
               <div className="flex items-center gap-1.5 bg-[#040814] p-1 rounded-xl border border-slate-800">
                 <button
                   type="button"
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
                     statusFilter === 'all'
-                      ? 'bg-cyan-500 text-slate-950'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-cyan-500/20 border-cyan-400/60 text-cyan-200'
+                      : 'border-transparent text-slate-400 hover:text-white'
                   }`}
                 >
                   Tất Cả ({totalStudents})
@@ -522,10 +610,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('active')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
                     statusFilter === 'active'
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                      : 'border-transparent text-slate-400 hover:text-white'
                   }`}
                 >
                   Hoạt Động ({activeCount})
@@ -533,10 +621,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('banned')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
                     statusFilter === 'banned'
-                      ? 'bg-rose-500 text-white'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-rose-500/20 border-rose-400/60 text-rose-200'
+                      : 'border-transparent text-slate-400 hover:text-white'
                   }`}
                 >
                   Đã Khóa ({bannedCount})
@@ -555,13 +643,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <option value="rp_desc" className="bg-[#091326] text-white">
                       Điểm RP cao nhất
                     </option>
-                    <option value="coins_desc" className="bg-[#091326] text-white">
+                    <option
+                      value="coins_desc"
+                      className="bg-[#091326] text-white"
+                    >
                       Xu nhiều nhất
                     </option>
-                    <option value="matches_desc" className="bg-[#091326] text-white">
+                    <option
+                      value="matches_desc"
+                      className="bg-[#091326] text-white"
+                    >
                       Số trận nhiều nhất
                     </option>
-                    <option value="name_asc" className="bg-[#091326] text-white">
+                    <option
+                      value="name_asc"
+                      className="bg-[#091326] text-white"
+                    >
                       Tên A → Z
                     </option>
                   </select>
@@ -571,19 +668,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   type="button"
                   onClick={handleExportCSV}
                   title="Xuất danh sách ra file Excel (CSV)"
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-sci font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer transition-colors shrink-0"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 font-sci font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Xuất Excel</span>
                 </button>
               </div>
             </div>
 
             {/* Table Container */}
-            <div className="rounded-2xl bg-[#070F21] border border-cyan-500/25 overflow-hidden shadow-xl">
+            <div className="rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 overflow-hidden shadow-xl">
               <div className="overflow-x-auto max-h-[560px]">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                  <thead className="sticky top-0 z-10 bg-[#09142A] border-b border-cyan-500/30 text-[11px] font-sci uppercase tracking-wider text-slate-400">
+                  <thead className="sticky top-0 z-10 bg-[#0B1528] border-b border-slate-800 text-[11px] font-sci uppercase tracking-wider text-slate-300">
                     <tr>
                       <th className="py-3 px-4">Học Sinh</th>
                       <th className="py-3 px-3">Gmail</th>
@@ -591,20 +688,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <th className="py-3 px-3">Bậc Rank RP</th>
                       <th className="py-3 px-3">Trận / Top 1</th>
                       <th className="py-3 px-3">Số Dư Xu</th>
-                      <th className="py-3 px-4 text-right">Điều Chỉnh & Quản Trị</th>
+                      <th className="py-3 px-4 text-right">
+                        Điều Chỉnh & Quản Trị
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-slate-500 font-bold">
+                        <td
+                          colSpan={7}
+                          className="text-center py-12 text-slate-500 font-bold"
+                        >
                           Không tìm thấy tài khoản học sinh nào phù hợp.
                         </td>
                       </tr>
                     ) : (
                       filteredStudents.map((st) => {
                         const rank = getRankByRP(st.rp);
-                        const isConfirmingDelete = confirmDeleteEmail === st.email;
+                        const isConfirmingDelete =
+                          confirmDeleteEmail === st.email;
                         const winRate =
                           st.totalMatches > 0
                             ? Math.round((st.top1Count / st.totalMatches) * 100)
@@ -615,8 +718,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             key={st.id}
                             className={`transition-colors ${
                               st.banned
-                                ? 'bg-rose-950/20 hover:bg-rose-950/30 opacity-75'
-                                : 'hover:bg-cyan-950/20'
+                                ? 'bg-rose-950/15 hover:bg-rose-950/25 opacity-80'
+                                : 'hover:bg-[#0B1528]/70'
                             }`}
                           >
                             {/* Column 1: Identity */}
@@ -631,13 +734,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span
                                       className={`font-extrabold truncate ${
-                                        st.banned ? 'line-through text-rose-300' : 'text-white'
+                                        st.banned
+                                          ? 'line-through text-rose-300'
+                                          : 'text-white'
                                       }`}
                                     >
                                       {st.username}
                                     </span>
                                     {st.banned && (
-                                      <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white text-[9px] font-black uppercase tracking-wider">
+                                      <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 text-[9px] font-black uppercase tracking-wider">
                                         ĐÃ KHÓA
                                       </span>
                                     )}
@@ -653,7 +758,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                             {/* Column 3: PIN */}
                             <td className="py-3 px-3">
-                              <span className="font-mono-num font-bold text-amber-300 bg-[#040814] px-2 py-1 rounded-lg border border-amber-400/40 shadow-inner">
+                              <span className="font-mono-num font-bold text-amber-300 bg-[#040814] px-2.5 py-1 rounded-lg border border-amber-500/30">
                                 {st.pin}
                               </span>
                             </td>
@@ -687,61 +792,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </td>
 
                             {/* Column 6: Coins */}
-                            <td className="py-3 px-3 font-mono-num font-bold text-yellow-400">
+                            <td className="py-3 px-3 font-mono-num font-bold text-amber-300">
                               <div className="flex items-center gap-1">
-                                <Coins className="w-3.5 h-3.5 text-yellow-400" />
+                                <Coins className="w-3.5 h-3.5 text-amber-400" />
                                 <span>{st.coins.toLocaleString()}</span>
                               </div>
                             </td>
 
-                            {/* Column 7: Actions */}
+                            {/* Column 7: Actions (Dark-Mode Optimized) */}
                             <td className="py-3 px-4 text-right">
                               <div className="inline-flex items-center gap-1.5 justify-end flex-wrap">
                                 {/* Coin Quick Adjust */}
-                                <div className="inline-flex items-center bg-[#040814] rounded-lg border border-slate-700 p-0.5">
+                                <div className="inline-flex items-center bg-[#040814] rounded-lg border border-slate-800 p-0.5">
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      dualDB.adjustStudentStats(st.email, 25, 0);
+                                      dualDB.adjustStudentStats(
+                                        st.email,
+                                        25,
+                                        0
+                                      );
                                       soundEngine.playCoin();
                                     }}
                                     title="Cộng +25 Xu"
-                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-yellow-300 hover:bg-yellow-400/20 cursor-pointer"
+                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-amber-300 hover:bg-amber-500/20 cursor-pointer transition-colors"
                                   >
                                     +25 Xu
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      dualDB.adjustStudentStats(st.email, -25, 0)
+                                      dualDB.adjustStudentStats(
+                                        st.email,
+                                        -25,
+                                        0
+                                      )
                                     }
                                     title="Trừ -25 Xu"
-                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-rose-300 hover:bg-rose-400/20 cursor-pointer"
+                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
                                   >
                                     -25
                                   </button>
                                 </div>
 
                                 {/* RP Quick Adjust */}
-                                <div className="inline-flex items-center bg-[#040814] rounded-lg border border-slate-700 p-0.5">
+                                <div className="inline-flex items-center bg-[#040814] rounded-lg border border-slate-800 p-0.5">
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      dualDB.adjustStudentStats(st.email, 0, 25);
+                                      dualDB.adjustStudentStats(
+                                        st.email,
+                                        0,
+                                        25
+                                      );
                                       soundEngine.playCoin();
                                     }}
                                     title="Cộng +25 RP"
-                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-emerald-300 hover:bg-emerald-400/20 cursor-pointer"
+                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-emerald-300 hover:bg-emerald-500/20 cursor-pointer transition-colors"
                                   >
                                     +25 RP
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      dualDB.adjustStudentStats(st.email, 0, -25)
+                                      dualDB.adjustStudentStats(
+                                        st.email,
+                                        0,
+                                        -25
+                                      )
                                     }
                                     title="Trừ -25 RP"
-                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-rose-300 hover:bg-rose-400/20 cursor-pointer"
+                                    className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-bold text-rose-300 hover:bg-rose-500/20 cursor-pointer transition-colors"
                                   >
                                     -25
                                   </button>
@@ -751,10 +872,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleToggleBanStudent(st)}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors border ${
                                     st.banned
-                                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                      : 'bg-amber-600/80 hover:bg-amber-500 text-amber-100'
+                                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
+                                      : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/35 text-amber-300'
                                   }`}
                                 >
                                   {st.banned ? (
@@ -774,14 +895,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 {!isConfirmingDelete ? (
                                   <button
                                     type="button"
-                                    onClick={() => setConfirmDeleteEmail(st.email)}
+                                    onClick={() =>
+                                      setConfirmDeleteEmail(st.email)
+                                    }
                                     title="Xóa vĩnh viễn tài khoản học sinh"
-                                    className="p-1 rounded-lg bg-rose-950 hover:bg-rose-800 text-rose-300 border border-rose-500/40 text-xs cursor-pointer"
+                                    className="p-1.5 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 text-rose-300 border border-rose-500/35 text-xs cursor-pointer transition-colors"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 ) : (
-                                  <div className="inline-flex items-center gap-1 bg-rose-950 border border-rose-500 px-2 py-0.5 rounded-lg shadow-lg">
+                                  <div className="inline-flex items-center gap-1 bg-rose-950/90 border border-rose-500/60 px-2 py-0.5 rounded-lg shadow-lg">
                                     <span className="text-[11px] text-rose-200 font-bold">
                                       Xóa?
                                     </span>
@@ -794,7 +917,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setConfirmDeleteEmail(null)}
+                                      onClick={() =>
+                                        setConfirmDeleteEmail(null)
+                                      }
                                       className="px-1.5 py-0.5 rounded bg-[#040814] text-slate-300 text-[11px] cursor-pointer"
                                     >
                                       Hủy
@@ -820,14 +945,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeSection === 'giftcodes' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-in fade-in duration-150">
             {/* Left Card: Create Giftcode Form (5 cols) */}
-            <div className="lg:col-span-5 p-5 rounded-2xl bg-[#070F21] border border-amber-400/35 space-y-4 shadow-xl">
+            <div className="lg:col-span-5 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 space-y-4 shadow-xl">
               <div>
-                <h3 className="text-base font-sci font-bold text-amber-400 flex items-center gap-2">
+                <h3 className="text-base font-sci font-bold text-amber-300 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                   <span>Phát Hành Giftcode Mới</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Tạo mã quà tặng Xu để thưởng cho học sinh đạt thành tích hoặc làm bài tập xuất sắc.
+                  Tạo mã quà tặng Xu để thưởng cho học sinh đạt thành tích hoặc
+                  làm bài tập xuất sắc.
                 </p>
               </div>
 
@@ -842,7 +968,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     placeholder="VD: LOP12A_XUAN2026"
                     value={newCode}
                     onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-amber-400/50 text-sm font-mono-num font-bold text-amber-300 uppercase focus:outline-none focus:border-amber-400"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700/80 text-sm font-mono-num font-bold text-amber-300 uppercase focus:outline-none focus:border-amber-400"
                   />
                 </div>
 
@@ -857,7 +983,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       max={5000}
                       value={newCodeCoins}
                       onChange={(e) => setNewCodeCoins(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700 text-sm font-mono-num font-bold text-yellow-400 focus:outline-none focus:border-amber-400"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700/80 text-sm font-mono-num font-bold text-amber-300 focus:outline-none focus:border-amber-400"
                     />
                   </div>
 
@@ -870,32 +996,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       min={1}
                       max={500}
                       value={newCodeMaxUses}
-                      onChange={(e) => setNewCodeMaxUses(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700 text-sm font-mono-num font-bold text-white focus:outline-none focus:border-amber-400"
+                      onChange={(e) =>
+                        setNewCodeMaxUses(Number(e.target.value))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700/80 text-sm font-mono-num font-bold text-white focus:outline-none focus:border-amber-400"
                     />
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 text-slate-950 font-sci font-black text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.35)] cursor-pointer transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/70 text-amber-200 font-sci font-black text-xs sm:text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.18)] cursor-pointer transition-all flex items-center justify-center gap-2"
                 >
-                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <Plus className="w-4 h-4 stroke-[3] text-amber-300" />
                   <span>Xác Nhận Phát Hành Giftcode</span>
                 </button>
               </form>
             </div>
 
             {/* Right Card: Active Giftcode Inventory (7 cols) */}
-            <div className="lg:col-span-7 p-5 rounded-2xl bg-[#070F21] border border-amber-400/35 space-y-3.5 shadow-xl">
+            <div className="lg:col-span-7 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 space-y-3.5 shadow-xl">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-sci font-bold text-white flex items-center gap-2">
                     <Key className="w-4 h-4 text-amber-400" />
-                    <span>Danh Sách Giftcode Đang Chạy ({giftcodes.length})</span>
+                    <span>
+                      Danh Sách Giftcode Đang Chạy ({giftcodes.length})
+                    </span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Học sinh có thể nhập tại mục Cài Đặt hoặc Shop trong menu.
+                    Học sinh có thể nhập tại mục Giftcode ở thanh trên cùng màn
+                    hình chính.
                   </p>
                 </div>
               </div>
@@ -908,19 +1039,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
                   {giftcodes.map((g) => {
                     const usedCount = (g.usedBy || []).length;
-                    const percent = Math.min(100, Math.round((usedCount / g.maxUses) * 100));
+                    const percent = Math.min(
+                      100,
+                      Math.round((usedCount / g.maxUses) * 100)
+                    );
                     const isCopied = copiedCode === g.code;
 
                     return (
                       <div
                         key={g.code}
-                        className="p-3.5 rounded-xl bg-[#040814] border border-amber-400/30 flex flex-col justify-between space-y-2.5 shadow-md"
+                        className="p-3.5 rounded-xl bg-[#040814] border border-slate-800 hover:border-amber-500/40 flex flex-col justify-between space-y-2.5 shadow-md transition-colors"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-mono-num font-black text-sm text-amber-400 tracking-wider">
+                          <span className="font-mono-num font-black text-sm text-amber-300 tracking-wider">
                             {g.code}
                           </span>
-                          <span className="font-mono-num text-xs font-bold text-yellow-300 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/30">
+                          <span className="font-mono-num text-xs font-bold text-amber-200 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-400/30">
                             +{g.coins} Xu
                           </span>
                         </div>
@@ -929,7 +1063,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div>
                           <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
                             <span>Lượt đã nhập:</span>
-                            <span className="font-mono-num font-bold text-white">
+                            <span className="font-mono-num font-bold text-slate-200">
                               {usedCount} / {g.maxUses} ({percent}%)
                             </span>
                           </div>
@@ -942,11 +1076,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
                           <button
                             type="button"
                             onClick={() => handleCopyCode(g.code)}
-                            className="flex-1 py-1 px-2 rounded-lg bg-[#0E1E3B] hover:bg-[#162C54] text-cyan-300 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-[#0B1528] hover:bg-[#132240] border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                           >
                             {isCopied ? (
                               <>
@@ -965,9 +1099,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             onClick={() => {
                               dualDB.deleteGiftcode(g.code);
                               soundEngine.playCoin();
-                              showStatus(`Đã xóa mã giftcode ${g.code}.`, 'info');
+                              showStatus(
+                                `Đã xóa mã giftcode ${g.code}.`,
+                                'info'
+                              );
                             }}
-                            className="p-1 px-2 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            className="py-1.5 px-2.5 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/35 text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <Trash2 className="w-3 h-3" />
                             <span>Xóa</span>
@@ -983,12 +1120,181 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
 
         {/* ================================================================= */}
-        {/* SECTION 3: SAO LƯU CHECKPOINTS & RESET MÙA GIẢI                   */}
+        {/* SECTION 3: CẤU HÌNH THƯỞNG GIẢI ĐẤU & TRỌNG TÀI                  */}
+        {/* ================================================================= */}
+        {activeSection === 'rewards' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-in fade-in duration-150">
+            <div className="lg:col-span-8 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 space-y-4 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-sci font-bold text-emerald-300 flex items-center gap-2">
+                    <Award className="w-4 h-4 text-emerald-400" />
+                    <span>Cấu Hình Phần Thưởng Xu Giải Đấu Lớp Học</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Tùy chỉnh số Xu thưởng tự động trao cho học sinh khi kết thúc
+                    chặng đua Giải Đấu Giáo Viên.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleApplyRewardPreset(1, 'Mặc Định Chuẩn (x1)')
+                    }
+                    className="px-2.5 py-1.5 rounded-xl bg-[#0B1528] hover:bg-[#132240] border border-slate-700 text-xs font-bold text-slate-200 cursor-pointer transition-colors"
+                  >
+                    Chuẩn (x1)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleApplyRewardPreset(2, 'Sự Kiện X2 Thưởng')
+                    }
+                    className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/50 text-xs font-bold text-amber-300 cursor-pointer transition-colors"
+                  >
+                    Thưởng x2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleApplyRewardPreset(3, 'Chung Kết Lớn (x3)')
+                    }
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/50 text-xs font-bold text-emerald-300 cursor-pointer transition-colors"
+                  >
+                    Chung Kết (x3)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  {
+                    key: 'top1Coins' as const,
+                    label: 'Quán Quân (Top 1)',
+                    accent: 'text-amber-300 border-amber-500/40',
+                  },
+                  {
+                    key: 'top2Coins' as const,
+                    label: 'Á Quân (Top 2)',
+                    accent: 'text-cyan-300 border-cyan-500/40',
+                  },
+                  {
+                    key: 'top3Coins' as const,
+                    label: 'Hạng Ba (Top 3)',
+                    accent: 'text-emerald-300 border-emerald-500/40',
+                  },
+                  {
+                    key: 'top10Coins' as const,
+                    label: 'Top 4 – Top 10',
+                    accent: 'text-purple-300 border-purple-500/40',
+                  },
+                  {
+                    key: 'finishCoins' as const,
+                    label: 'Hoàn Thành Chặng',
+                    accent: 'text-slate-200 border-slate-700',
+                  },
+                  {
+                    key: 'teamWinBonusCoins' as const,
+                    label: 'Thưởng Đội Thắng',
+                    accent: 'text-yellow-300 border-yellow-500/40',
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    className="p-3 rounded-xl bg-[#040814] border border-slate-800 space-y-1.5"
+                  >
+                    <label className="block text-[11px] font-bold text-slate-400">
+                      {item.label}
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        max={10000}
+                        value={teacherRewards[item.key]}
+                        onChange={(e) =>
+                          handleUpdateReward(item.key, Number(e.target.value))
+                        }
+                        className={`w-full px-2.5 py-1.5 rounded-lg bg-[#070D1B] border font-mono-num text-sm font-black focus:outline-none ${item.accent}`}
+                      />
+                      <span className="text-xs font-bold text-slate-400 shrink-0">
+                        Xu
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Card: Host Mode Role in Tournament */}
+            <div className="lg:col-span-4 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 flex flex-col justify-between space-y-4 shadow-xl">
+              <div className="space-y-2">
+                <h3 className="text-base font-sci font-bold text-cyan-300 flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-cyan-400" />
+                  <span>Vai Trò Giáo Viên Trong Giải</span>
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Chọn chế độ tham gia của Giáo Viên khi phát lệnh bắt đầu phòng
+                  Giải Đấu Lớp Học:
+                </p>
+
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dualDB.updateLobby({ hostMode: 'play' });
+                      soundEngine.playCoin();
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                      currentLobby.hostMode === 'play'
+                        ? 'bg-cyan-500/15 border-cyan-400/70 text-white'
+                        : 'bg-[#040814] border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-black text-cyan-300">
+                      🏎️ Trực Tiếp Đua Cùng Học Sinh
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Xe của Giáo Viên sẽ xuất hiện trên vạch xuất phát cùng cả
+                      lớp.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dualDB.updateLobby({ hostMode: 'spectator' });
+                      soundEngine.playCoin();
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                      currentLobby.hostMode === 'spectator'
+                        ? 'bg-amber-500/15 border-amber-400/70 text-white'
+                        : 'bg-[#040814] border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-black text-amber-300">
+                      🎥 Trọng Tài Quan Sát (Spectator)
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Giáo Viên không lái xe mà điều khiển Camera theo dõi toàn
+                      trận đua.
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* SECTION 4: SAO LƯU CHECKPOINTS & RESET MÙA GIẢI                   */}
         {/* ================================================================= */}
         {activeSection === 'checkpoints' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-in fade-in duration-150">
             {/* Left Card: Save Checkpoints (7 cols) */}
-            <div className="lg:col-span-7 p-5 rounded-2xl bg-[#070F21] border border-purple-500/35 space-y-4 shadow-xl">
+            <div className="lg:col-span-7 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 space-y-4 shadow-xl">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-base font-sci font-bold text-purple-300 flex items-center gap-2">
@@ -996,7 +1302,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span>Điểm Mốc Lưu Game (Save Checkpoints)</span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Tạo điểm mốc trạng thái cả lớp (tài khoản, Xu, RP, kho xe) để khôi phục bất cứ lúc nào.
+                    Tạo điểm mốc trạng thái cả lớp (tài khoản, Xu, RP, kho xe)
+                    để khôi phục bất cứ lúc nào.
                   </p>
                 </div>
 
@@ -1004,7 +1311,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => handleExportCheckpointJSON()}
-                    className="px-3 py-1.5 rounded-xl bg-[#0E1E3B] hover:bg-[#162C54] border border-cyan-500/40 text-xs font-bold text-cyan-300 flex items-center gap-1.5 cursor-pointer transition-colors"
+                    className="px-3 py-1.5 rounded-xl bg-[#0B1528] hover:bg-[#132240] border border-cyan-500/35 text-xs font-bold text-cyan-300 flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Tải JSON</span>
@@ -1012,7 +1319,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-[#0E1E3B] hover:bg-[#162C54] border border-purple-500/40 text-xs font-bold text-purple-300 flex items-center gap-1.5 cursor-pointer transition-colors"
+                    className="px-3 py-1.5 rounded-xl bg-[#0B1528] hover:bg-[#132240] border border-purple-500/35 text-xs font-bold text-purple-300 flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Upload className="w-3.5 h-3.5" />
                     <span>Nhập JSON</span>
@@ -1034,13 +1341,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   placeholder="Tên điểm mốc (VD: Trước giải đấu Lớp 12A1)..."
                   value={checkpointLabel}
                   onChange={(e) => setCheckpointLabel(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#040814] border border-purple-500/40 text-sm text-white focus:outline-none focus:border-purple-400"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#040814] border border-slate-700/80 text-sm text-white focus:outline-none focus:border-purple-400"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-sci font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 shadow-md"
+                  className="px-4 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/70 text-purple-200 font-sci font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 shadow-md"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-4 h-4 text-purple-300" />
                   <span>+ Lưu Mốc</span>
                 </button>
               </form>
@@ -1064,7 +1371,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="text-[11px] text-slate-400 font-mono-num mt-0.5 flex items-center gap-1.5">
                           <History className="w-3 h-3 text-purple-400" />
                           <span>
-                            {new Date(cp.createdAt).toLocaleString('vi-VN')} · {cp.studentCount} Học Sinh
+                            {new Date(cp.createdAt).toLocaleString('vi-VN')} ·{' '}
+                            {cp.studentCount} Học Sinh
                           </span>
                         </div>
                       </div>
@@ -1073,7 +1381,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => handleRestoreCheckpoint(cp)}
-                          className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer transition-colors"
+                          className="px-3 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold cursor-pointer transition-colors"
                         >
                           Khôi Phục
                         </button>
@@ -1081,7 +1389,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           type="button"
                           onClick={() => handleDeleteCheckpoint(cp.id)}
                           title="Xóa điểm mốc"
-                          className="p-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 cursor-pointer transition-colors"
+                          className="p-1.5 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/35 text-rose-300 cursor-pointer transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1093,14 +1401,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Right Card: New Season Reset (5 cols) */}
-            <div className="lg:col-span-5 p-5 rounded-2xl bg-[#070F21] border border-rose-500/35 flex flex-col justify-between space-y-4 shadow-xl">
-              <div className="space-y-2">
+            <div className="lg:col-span-5 p-5 rounded-2xl bg-[#070D1B]/95 border border-slate-800/90 flex flex-col justify-between space-y-4 shadow-xl">
+              <div className="space-y-2.5">
                 <h3 className="text-base font-sci font-bold text-rose-300 flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-rose-400" />
                   <span>Khởi Tạo Mùa Giải Mới (New Season)</span>
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Đưa điểm Rank RP và số trận của toàn bộ học sinh về vạch xuất phát để bắt đầu chặng thi đua mới.
+                  Đưa điểm Rank RP và số trận của toàn bộ học sinh về vạch xuất
+                  phát để bắt đầu chặng thi đua mới.
                 </p>
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-amber-300">
@@ -1108,7 +1417,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <span>Quyền lợi được bảo toàn 100%:</span>
                   </div>
                   <div>• Toàn bộ số dư Xu của học sinh được giữ nguyên.</div>
-                  <div>• Tất cả xe, chi tiết độ và trang bị trong Gara không bị mất.</div>
+                  <div>
+                    • Tất cả xe, chi tiết độ và trang bị trong Gara không bị
+                    mất.
+                  </div>
                 </div>
               </div>
 
@@ -1117,15 +1429,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => setConfirmSeasonReset(true)}
-                    className="w-full py-3 rounded-xl bg-rose-950 hover:bg-rose-900 border border-rose-500 text-rose-100 font-sci font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-all"
+                    className="w-full py-3 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/50 text-rose-200 font-sci font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-all"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-4 h-4 text-rose-400" />
                     <span>Reset Mùa Giải Mới</span>
                   </button>
                 ) : (
-                  <div className="p-3.5 rounded-xl bg-rose-950 border border-rose-400 space-y-2.5">
+                  <div className="p-3.5 rounded-xl bg-rose-950/90 border border-rose-400/70 space-y-2.5">
                     <div className="text-xs text-rose-100 font-bold">
-                      ⚠️ Bạn có chắc chắn muốn đưa Rank RP toàn bộ học sinh về 0?
+                      ⚠️ Bạn có chắc chắn muốn đưa Rank RP toàn bộ học sinh về
+                      0?
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -1138,7 +1451,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmSeasonReset(false)}
-                        className="px-4 py-2 rounded-lg bg-[#040814] text-slate-300 text-xs cursor-pointer"
+                        className="px-4 py-2 rounded-lg bg-[#040814] border border-slate-700 text-slate-300 text-xs cursor-pointer"
                       >
                         Hủy
                       </button>

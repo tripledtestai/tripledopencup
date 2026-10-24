@@ -91,6 +91,8 @@ interface LobbyViewProps {
   teacherProfile: StudentAccount;
   isTeacher: boolean;
   fbConnected: boolean;
+  isNightMode?: boolean;
+  onToggleNightMode?: () => void;
   allStudents: StudentAccount[];
   playerPhysicsRef?: React.MutableRefObject<ComputedTuningPhysics>;
   onStartRace: (finalLobby: LobbyConfig) => void;
@@ -165,6 +167,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   teacherProfile,
   isTeacher,
   fbConnected,
+  isNightMode = true,
+  onToggleNightMode,
   allStudents: _allStudents,
   playerPhysicsRef,
   onStartRace,
@@ -1336,15 +1340,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <div className="absolute bottom-0 right-1/5 w-[500px] h-[500px] rounded-full bg-[#F59E0B] blur-[150px]" />
       </div>
 
-      <div className="relative z-10 w-[94vw] max-w-7xl h-[84vh] min-h-[590px] max-h-[840px] my-auto flex flex-col space-y-3 p-4 md:p-5 rounded-3xl bg-[#0B1120]/95 border-2 border-[#06B6D4]/60 shadow-[0_24px_80px_rgba(0,0,0,0.92)] overflow-hidden">
+      <div
+        className={`relative z-10 w-[94vw] max-w-7xl ${
+          isTeacher
+            ? 'h-[92vh] min-h-[640px] max-h-[920px]'
+            : 'h-[84vh] min-h-[590px] max-h-[840px]'
+        } my-auto flex flex-col space-y-2.5 p-3.5 md:p-5 rounded-3xl bg-[#070D1B]/95 border border-slate-800 shadow-[0_24px_80px_rgba(0,0,0,0.92)] overflow-hidden`}
+      >
         {/* If Teacher: Render the Unified Teacher Navigation Bar */}
         {isTeacher && onSelectTeacherTab && onOpenFirebaseModal && onLogout && (
           <TeacherNavHeader
             activeTab="lobby"
             teacherProfile={teacherProfile}
             fbConnected={fbConnected}
+            isNightMode={isNightMode}
+            onToggleNightMode={onToggleNightMode}
             onSelectTab={onSelectTeacherTab}
             onOpenFirebaseModal={onOpenFirebaseModal}
+            onOpenSettings={() => setShowSettingsModal(true)}
             onLogout={onLogout}
           />
         )}
@@ -1458,18 +1471,51 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             {activeMode === 'teacher_cup' &&
               (isTeacher ? (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1 bg-[#090D16] px-2.5 py-1 rounded-xl border border-[#F59E0B]/50 text-xs">
-                    <Crown className="w-3.5 h-3.5 text-[#FEF08A]" />
-                    <span className="font-mono-num font-black text-[#FEF08A]">
+                  <div className="flex items-center gap-1.5 bg-[#040814] px-2.5 py-1 rounded-xl border border-amber-500/40 text-xs">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-slate-400 font-semibold">Mã Giải:</span>
+                    <span className="font-mono-num font-black text-amber-300">
                       #{lobby.roomPin || '889900'}
                     </span>
                     <button
                       type="button"
                       onClick={handleCreateNewTournamentRoom}
-                      title="Tạo ID phòng mới"
-                      className="ml-1 text-[#FEF08A] hover:text-white cursor-pointer font-bold p-0.5"
+                      title="Tạo mã phòng Giải Đấu mới (Làm sạch phòng)"
+                      className="ml-1 text-amber-300 hover:text-white cursor-pointer font-bold p-0.5 transition-colors"
                     >
                       <RefreshCw className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {/* Quick Teacher Role Switcher: Play vs Spectator */}
+                  <div className="flex items-center bg-[#040814] p-0.5 rounded-xl border border-slate-800 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dualDB.updateLobby({ hostMode: 'play' });
+                        soundEngine.playCoin();
+                      }}
+                      className={`px-2 py-0.5 rounded-lg cursor-pointer transition-colors ${
+                        lobby.hostMode === 'play'
+                          ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🏎️ Đua Cùng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dualDB.updateLobby({ hostMode: 'spectator' });
+                        soundEngine.playCoin();
+                      }}
+                      className={`px-2 py-0.5 rounded-lg cursor-pointer transition-colors ${
+                        lobby.hostMode === 'spectator'
+                          ? 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🎥 Quan Sát
                     </button>
                   </div>
                 </div>

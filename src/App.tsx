@@ -152,6 +152,17 @@ export default function App() {
       localStorage.setItem('tripled_theme_night_v1', showroomNightMode ? '1' : '0');
     } catch {}
   }, [showroomNightMode, screen]);
+
+  useEffect(() => {
+    const onCustomTheme = (e: Event) => {
+      const detail = (e as CustomEvent<{ isNight?: boolean }>).detail;
+      if (detail && typeof detail.isNight === 'boolean') {
+        setShowroomNightMode(detail.isNight);
+      }
+    };
+    window.addEventListener('tripled-theme-change', onCustomTheme);
+    return () => window.removeEventListener('tripled-theme-change', onCustomTheme);
+  }, []);
   const [showroomPreset, setShowroomPreset] = useState<
     'player' | 'gold' | 'elderwood' | 'chroma' | 'tripled_a'
   >('player');
@@ -624,7 +635,10 @@ export default function App() {
           students={students}
           giftcodes={giftcodes}
           teacherProfile={teacherProfile}
+          lobby={lobby}
           fbConnected={fbConnected}
+          isNightMode={showroomNightMode}
+          onToggleNightMode={() => setShowroomNightMode((v) => !v)}
           onSelectTeacherTab={handleSelectTeacherTab}
           onOpenFirebaseModal={() => setShowFirebaseModal(true)}
           onOpenSettings={() => setShowSettingsModal(true)}
@@ -632,6 +646,12 @@ export default function App() {
         />
         {showFirebaseModal && (
           <FirebaseModal onClose={() => setShowFirebaseModal(false)} />
+        )}
+        {showSettingsModal && (
+          <SettingsModal
+            onClose={() => setShowSettingsModal(false)}
+            isTeacher={isTeacher}
+          />
         )}
       </>
     );
@@ -649,6 +669,8 @@ export default function App() {
           teacherProfile={teacherProfile}
           isTeacher={isTeacher}
           fbConnected={fbConnected}
+          isNightMode={showroomNightMode}
+          onToggleNightMode={() => setShowroomNightMode((v) => !v)}
           allStudents={students}
           playerPhysicsRef={playerPhysicsRef}
           onStartRace={(updatedLobby) => {
@@ -1537,6 +1559,8 @@ export default function App() {
               activeTab="menu"
               teacherProfile={teacherProfile}
               fbConnected={fbConnected}
+              isNightMode={showroomNightMode}
+              onToggleNightMode={() => setShowroomNightMode((v) => !v)}
               onSelectTab={handleSelectTeacherTab}
               onOpenFirebaseModal={() => setShowFirebaseModal(true)}
               onOpenSettings={() => setShowSettingsModal(true)}
