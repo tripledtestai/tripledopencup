@@ -221,7 +221,7 @@ class DualDatabaseService {
   private createDefaultLobby(): LobbyConfig {
     const randomPin = String(Math.floor(100000 + Math.random() * 900000));
     return {
-      roomPin: '886688',
+      roomPin: randomPin,
       friendRoomPin: randomPin,
       friendHostName: 'Phòng Bạn Bè',
       playModeCategory: 'practice_ai',

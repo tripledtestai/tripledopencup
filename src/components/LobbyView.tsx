@@ -280,6 +280,41 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     joinedTeacherPin,
   ]);
 
+  // Clean disconnect on tab close, reload, or navigation away
+  React.useEffect(() => {
+    const handleBeforeUnload = () => {
+      const {
+        currentStudent: curStudent,
+        isTeacher: curIsTeacher,
+        activeMode: curMode,
+        joinedFriendPin: curJoinedFriendPin,
+        activeRoomPin: curActiveRoomPin,
+      } = stateRef.current;
+
+      const curIsHost =
+        curMode === 'teacher_cup'
+          ? curIsTeacher
+          : curMode === 'friends_pvp'
+          ? !curJoinedFriendPin
+          : true;
+
+      const myId = curIsTeacher ? 'teacher_host' : curStudent?.id;
+
+      if (curIsHost && curActiveRoomPin) {
+        dualDB.removeMatchmakingRoom(curActiveRoomPin);
+        dualDB.removeRoomState(curActiveRoomPin);
+      }
+      multiplayerService.leaveRoom(myId, curIsHost);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  }, []);
+
   // Listen to Firebase room players' computedStats (`rooms/{roomPin}/players/{playerId}/computedStats`)
   React.useEffect(() => {
     if (!activeRoomPin || activeMode === 'practice_ai') return;
@@ -492,18 +527,65 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             : p
         );
         dualDB.updateLobby({ participants: updatedRoster });
+      } else if (
+        msg.type === 'HOST_LEFT' ||
+        (msg.type === 'LEAVE_ROOM' && msg.isHost)
+      ) {
+        if (!curIsHost) {
+          multiplayerService.disconnect();
+          setJoinedFriendPin(null);
+          setJoinedTeacherPin(null);
+          setFriendRoomFeedback({
+            ok: false,
+            text: '🚪 Chủ phòng đã rời và giải tán phòng đua!',
+          });
+          soundEngine.playHazardHit();
+          dualDB.updateLobby({ participants: [] });
+        }
       } else if (msg.type === 'LEAVE_ROOM') {
-        const leaveId = msg.participantId;
+        const leaveId = msg.participantId?.toLowerCase();
         const currentRoster = curLobby.participants;
+        const leavingPlayer = currentRoster.find(
+          (p) =>
+            leaveId &&
+            (p.id.toLowerCase() === leaveId ||
+              p.id.toLowerCase().startsWith(`${leaveId}_guest_`))
+        );
         const updatedRoster = leaveId
-          ? currentRoster.filter((p) => p.id !== leaveId)
+          ? currentRoster.filter(
+              (p) =>
+                p.id.toLowerCase() !== leaveId &&
+                !p.id.toLowerCase().startsWith(`${leaveId}_guest_`)
+            )
           : currentRoster;
         const nextLobby = { ...curLobby, participants: updatedRoster };
         dualDB.updateLobby(nextLobby);
+        const leavingName = leavingPlayer?.username || 'Một người chơi';
         setFriendRoomFeedback({
           ok: true,
-          text: `Một người chơi đã rời khỏi phòng.`,
+          text: `👋 ${leavingName} đã rời khỏi phòng.`,
         });
+
+        if (curIsHost) {
+          const networkParticipants = updatedRoster.map((p) => ({
+            ...p,
+            tuningLoadout: p.isBot ? p.tuningLoadout : undefined,
+          }));
+          multiplayerService.broadcast({
+            type: 'LOBBY_UPDATE',
+            lobby: { participants: networkParticipants },
+          });
+
+          const activePin = curLobby.friendRoomPin || curLobby.roomPin;
+          if (activePin) {
+            dualDB.updateMatchmakingRoom(activePin, {
+              participantsCount: Math.max(
+                1,
+                updatedRoster.filter((p) => !p.isBot).length
+              ),
+            });
+          }
+        }
       } else if (msg.type === 'KICK_PLAYER') {
         const myId = curIsTeacher ? 'teacher_host' : curStudent?.id;
         if (
@@ -783,9 +865,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       });
     }
 
-    // Real connected participants: ONLY included if in active multiplayer room
+    // Real connected participants: ONLY included if in active multiplayer room and actually connected
     if (mCat === 'friends_pvp') {
-      if (joinedFriendPin || netStatus.peerCount > 0) {
+      const isOnlineGuest = Boolean(joinedFriendPin);
+      if (
+        (isOnlineGuest && netStatus.connected) ||
+        (!isOnlineGuest && netStatus.peerCount > 0)
+      ) {
         for (const p of lobby.participants) {
           if (!list.some((existing) => existing.id === p.id) && !p.isBot) {
             const dbStudent = dualDB.getStudent(p.id);
@@ -801,7 +887,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         }
       }
     } else if (mCat === 'teacher_cup') {
-      if (isTeacher || joinedTeacherPin) {
+      const isOnlineGuest = Boolean(joinedTeacherPin);
+      if (
+        (isOnlineGuest && netStatus.connected) ||
+        (isTeacher && netStatus.peerCount > 0)
+      ) {
         for (const p of lobby.participants) {
           if (!list.some((existing) => existing.id === p.id) && !p.isBot) {
             const dbStudent = dualDB.getStudent(p.id);
@@ -946,12 +1036,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       setTeacherPinError('Chỉ Giáo Viên mới có quyền tạo hoặc đổi ID phòng Giải Đấu!');
       return;
     }
+    multiplayerService.disconnect();
     const newPin = dualDB.generateNewRoomPin();
     setJoinedTeacherPin(null);
     setTeacherPinError(null);
+    setManualBots([]);
     dualDB.updateLobby({
       roomPin: newPin,
       participants: [],
+      botCount: 0,
+      status: 'waiting',
     });
     setFriendRoomFeedback({
       ok: true,
@@ -966,15 +1060,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleCreateNewFriendRoom = async () => {
+    if (activeRoomPin) {
+      dualDB.removeMatchmakingRoom(activeRoomPin);
+      dualDB.removeRoomState(activeRoomPin);
+    }
+    multiplayerService.disconnect();
     const newPin = dualDB.generateNewFriendRoomPin(
       isTeacher
         ? teacherProfile.username
         : currentStudent?.username || 'Bạn Bè TripleD'
     );
     setJoinedFriendPin(null);
+    setManualBots([]);
     dualDB.updateLobby({
       friendRoomPin: newPin,
+      isFriendGuest: false,
       participants: [],
+      botCount: 0,
+      status: 'waiting',
     });
     setFriendRoomFeedback({
       ok: true,
@@ -1020,9 +1123,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleLeaveRoom = () => {
-    multiplayerService.leaveRoom(
-      isTeacher ? 'teacher_host' : currentStudent?.id
-    );
+    const myId = isTeacher ? 'teacher_host' : currentStudent?.id;
+    if (isHost) {
+      if (activeRoomPin) {
+        dualDB.removeMatchmakingRoom(activeRoomPin);
+        dualDB.removeRoomState(activeRoomPin);
+      }
+      multiplayerService.leaveRoom(myId, true);
+    } else {
+      multiplayerService.leaveRoom(myId, false);
+    }
     setJoinedFriendPin(null);
     setJoinedTeacherPin(null);
     setFriendPinInput('');
@@ -1036,16 +1146,53 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         roomPin: newPin,
         participants: [],
         botCount: 0,
+        status: 'waiting',
       });
     } else {
       dualDB.updateLobby({
         friendRoomPin: newPin,
+        isFriendGuest: false,
         participants: [],
         botCount: 0,
+        status: 'waiting',
       });
     }
     soundEngine.playCoin();
   };
+
+  const handleExitLobby = React.useCallback(() => {
+    const {
+      currentStudent: curStudent,
+      isTeacher: curIsTeacher,
+      activeMode: curMode,
+      joinedFriendPin: curJoinedFriendPin,
+      activeRoomPin: curActiveRoomPin,
+    } = stateRef.current;
+
+    const curIsHost =
+      curMode === 'teacher_cup'
+        ? curIsTeacher
+        : curMode === 'friends_pvp'
+        ? !curJoinedFriendPin
+        : true;
+
+    const myId = curIsTeacher ? 'teacher_host' : curStudent?.id;
+
+    if (curIsHost) {
+      if (curActiveRoomPin) {
+        dualDB.removeMatchmakingRoom(curActiveRoomPin);
+        dualDB.removeRoomState(curActiveRoomPin);
+      }
+      multiplayerService.leaveRoom(myId, true);
+    } else {
+      multiplayerService.leaveRoom(myId, false);
+    }
+
+    setJoinedFriendPin(null);
+    setJoinedTeacherPin(null);
+    soundEngine.playCoin();
+    onBackToMenu();
+  }, [onBackToMenu]);
 
   // Only Teacher is host in TripleD Tournament; in Friends PvP whoever created the room is host
   const isHost =
@@ -1208,17 +1355,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-2xl bg-[#090D16] border border-slate-800 shadow-md shrink-0">
           {/* Left: Navigation & Mode Indicator with Car Count */}
           <div className="flex items-center gap-2">
-            {!isTeacher && (
-              <button
-                type="button"
-                onClick={onBackToMenu}
-                title="Quay lại sảnh chính"
-                className="px-2.5 py-1.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs cursor-pointer inline-flex items-center gap-1 transition-all"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 text-[#38BDF8]" />
-                <span className="hidden sm:inline">Sảnh</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleExitLobby}
+              title={isTeacher ? 'Quay lại quản trị' : 'Quay lại sảnh chính'}
+              className="px-2.5 py-1.5 rounded-xl bg-[#1E293B] hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs cursor-pointer inline-flex items-center gap-1 transition-all"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-[#38BDF8]" />
+              <span className="hidden sm:inline">{isTeacher ? 'Quản Trị' : 'Sảnh'}</span>
+            </button>
 
             {/* Mode Title with Vehicle Count Badge */}
             <div className="flex items-center gap-2 bg-[#0F172A] px-2.5 py-1 rounded-xl border border-slate-800">

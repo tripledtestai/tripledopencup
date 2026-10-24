@@ -72,7 +72,13 @@ export type NetworkMessage = (
       computedStats: ComputedTuningStats;
       presetName?: string;
     }
-  | { type: 'LEAVE_ROOM'; participantId?: string }
+  | {
+      type: 'LEAVE_ROOM';
+      participantId?: string;
+      isHost?: boolean;
+      reason?: string;
+    }
+  | { type: 'HOST_LEFT'; reason?: string }
   | { type: 'KICK_PLAYER'; playerId: string; reason?: string }
   | { type: 'LOBBY_UPDATE'; lobby: Partial<LobbyConfig> }
   | { type: 'START_RACE'; lobby: LobbyConfig }
@@ -126,6 +132,8 @@ class MultiplayerService {
   private broadcastChannel: BroadcastChannel | null = null;
   private cloudUnsubscribes: (() => void)[] = [];
   private connections: Map<string, DataConnection> = new Map();
+  private peerToPlayerId: Map<string, string> = new Map();
+  private playerIdToPeer: Map<string, string> = new Map();
   private hostConnection: DataConnection | null = null;
   private isHost: boolean = false;
   private currentRoomPin: string | null = null;
@@ -619,6 +627,11 @@ class MultiplayerService {
     });
   }
 
+  public registerParticipantPeer(playerId: string, peerId: string) {
+    this.peerToPlayerId.set(peerId, playerId);
+    this.playerIdToPeer.set(playerId, peerId);
+  }
+
   private setupConnection(conn: DataConnection, isIncoming: boolean) {
     if (isIncoming) {
       this.connections.set(conn.peer, conn);
@@ -647,6 +660,13 @@ class MultiplayerService {
 
       if (this.markAndCheckDuplicateMsg(msg)) return;
 
+      if (msg.type === 'JOIN_REQUEST') {
+        if (isIncoming && msg.student?.id) {
+          this.peerToPlayerId.set(conn.peer, msg.student.id);
+          this.playerIdToPeer.set(msg.student.id, conn.peer);
+        }
+      }
+
       if (msg.type === 'RACER_POSITION') {
         this.ingestRemotePosition(msg.data);
       } else if (msg.type === 'USE_ITEM') {
@@ -661,7 +681,7 @@ class MultiplayerService {
         }
       }
 
-      // If host, forward position, item, bump, stats, and kick messages to other connected guests
+      // If host, forward position, item, bump, stats, kick, and leave messages to other connected guests
       if (this.isHost) {
         if (
           msg.type === 'RACER_POSITION' ||
@@ -669,7 +689,8 @@ class MultiplayerService {
           msg.type === 'CAR_BUMP' ||
           msg.type === 'PLAYER_STATS_UPDATE' ||
           msg.type === 'KICK_PLAYER' ||
-          msg.type === 'FORCE_FINISH'
+          msg.type === 'FORCE_FINISH' ||
+          msg.type === 'LEAVE_ROOM'
         ) {
           this.broadcastExcept(msg, conn.peer);
         }
@@ -680,18 +701,54 @@ class MultiplayerService {
 
     conn.on('close', () => {
       if (isIncoming) {
+        const playerId = this.peerToPlayerId.get(conn.peer);
         this.connections.delete(conn.peer);
+        this.peerToPlayerId.delete(conn.peer);
+        if (playerId) {
+          this.playerIdToPeer.delete(playerId);
+          const leaveMsg: NetworkMessage = {
+            type: 'LEAVE_ROOM',
+            participantId: playerId,
+            isHost: false,
+            reason: 'disconnected',
+          };
+          this.messageListeners.forEach((fn) => fn(leaveMsg, conn));
+          this.broadcastExcept(leaveMsg, conn.peer);
+        }
       } else {
         this.hostConnection = null;
+        const hostLeftMsg: NetworkMessage = {
+          type: 'HOST_LEFT',
+          reason: 'host_disconnected',
+        };
+        this.messageListeners.forEach((fn) => fn(hostLeftMsg, conn));
       }
       this.notifyStatus();
     });
 
     conn.on('error', () => {
       if (isIncoming) {
+        const playerId = this.peerToPlayerId.get(conn.peer);
         this.connections.delete(conn.peer);
+        this.peerToPlayerId.delete(conn.peer);
+        if (playerId) {
+          this.playerIdToPeer.delete(playerId);
+          const leaveMsg: NetworkMessage = {
+            type: 'LEAVE_ROOM',
+            participantId: playerId,
+            isHost: false,
+            reason: 'connection_error',
+          };
+          this.messageListeners.forEach((fn) => fn(leaveMsg, conn));
+          this.broadcastExcept(leaveMsg, conn.peer);
+        }
       } else {
         this.hostConnection = null;
+        const hostLeftMsg: NetworkMessage = {
+          type: 'HOST_LEFT',
+          reason: 'host_connection_error',
+        };
+        this.messageListeners.forEach((fn) => fn(hostLeftMsg, conn));
       }
       this.notifyStatus('Mất kết nối với người chơi.');
     });
@@ -751,19 +808,47 @@ class MultiplayerService {
   }
 
   public broadcastExcept(msg: NetworkMessage, skipPeerId: string) {
+    const isControlMsg =
+      msg.type !== 'PING' &&
+      msg.type !== 'PONG' &&
+      msg.type !== 'RACER_POSITION' &&
+      msg.type !== 'USE_ITEM';
+
+    const enrichedMsg: NetworkMessage =
+      isControlMsg && !msg._msgId
+        ? {
+            ...msg,
+            _msgId: `evt_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 8)}`,
+          }
+        : msg;
+
+    if (enrichedMsg._msgId) {
+      this.processedMsgIds.add(enrichedMsg._msgId);
+    }
+
     if (this.broadcastChannel) {
       try {
-        this.broadcastChannel.postMessage(msg);
+        this.broadcastChannel.postMessage(enrichedMsg);
       } catch {}
     }
 
     this.connections.forEach((conn, peerId) => {
       if (peerId !== skipPeerId && conn.open) {
         try {
-          conn.send(msg);
+          conn.send(enrichedMsg);
         } catch {}
       }
     });
+
+    if (isControlMsg && this.currentRoomPin && enrichedMsg._msgId) {
+      dualDB.pushRoomNetEvent(
+        this.currentRoomPin,
+        enrichedMsg._msgId,
+        enrichedMsg
+      );
+    }
   }
 
   /**
@@ -879,9 +964,19 @@ class MultiplayerService {
     return undefined;
   }
 
-  public leaveRoom(participantId?: string) {
-    this.broadcast({ type: 'LEAVE_ROOM', participantId });
-    this.disconnect();
+  public leaveRoom(participantId?: string, isHost?: boolean) {
+    const leaveMsg: NetworkMessage = {
+      type: 'LEAVE_ROOM',
+      participantId,
+      isHost: Boolean(isHost),
+    };
+    this.broadcast(leaveMsg);
+    if (isHost) {
+      this.broadcast({ type: 'HOST_LEFT' });
+    }
+    setTimeout(() => {
+      this.disconnect();
+    }, 60);
   }
 
   public sendCollisionBump(bump: Omit<NetworkCollisionBump, 'id'>) {
@@ -954,6 +1049,8 @@ class MultiplayerService {
       } catch {}
     });
     this.connections.clear();
+    this.peerToPlayerId.clear();
+    this.playerIdToPeer.clear();
 
     if (this.hostConnection) {
       try {

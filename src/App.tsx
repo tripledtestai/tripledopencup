@@ -2781,9 +2781,17 @@ export default function App() {
                 <div
                   onClick={() => {
                     soundEngine.playFanfare(false);
+                    const freshPin = isTeacher
+                      ? dualDB.generateNewRoomPin()
+                      : lobby.roomPin || dualDB.generateNewRoomPin();
+                    multiplayerService.disconnect();
                     dualDB.updateLobby({
                       playModeCategory: 'teacher_cup',
+                      roomPin: freshPin,
+                      participants: [],
                       botCount: 0,
+                      isFriendGuest: false,
+                      status: 'waiting',
                     });
                     setScreen('lobby');
                   }}
@@ -3431,10 +3439,13 @@ export default function App() {
               <div
                 onClick={() => {
                   soundEngine.playCoin();
+                  multiplayerService.disconnect();
                   dualDB.updateLobby({
                     playModeCategory: 'practice_ai',
                     hostMode: isTeacher ? 'play' : lobby.hostMode,
+                    participants: [],
                     botCount: lobby.botCount === 0 ? 15 : lobby.botCount,
+                    status: 'waiting',
                   });
                   setShowPlayModeModal(false);
                   setScreen('lobby');
@@ -3490,10 +3501,16 @@ export default function App() {
               <div
                 onClick={() => {
                   soundEngine.playCoin();
+                  const freshPin = dualDB.generateNewFriendRoomPin(activeProfile.username);
+                  multiplayerService.disconnect();
                   dualDB.updateLobby({
                     playModeCategory: 'friends_pvp',
+                    friendRoomPin: freshPin,
+                    isFriendGuest: false,
                     hostMode: isTeacher ? 'play' : lobby.hostMode,
+                    participants: [],
                     botCount: 0,
+                    status: 'waiting',
                   });
                   setShowPlayModeModal(false);
                   setScreen('lobby');
@@ -3549,9 +3566,17 @@ export default function App() {
               <div
                 onClick={() => {
                   soundEngine.playFanfare(false);
+                  const freshPin = isTeacher
+                    ? dualDB.generateNewRoomPin()
+                    : lobby.roomPin || dualDB.generateNewRoomPin();
+                  multiplayerService.disconnect();
                   dualDB.updateLobby({
                     playModeCategory: 'teacher_cup',
+                    roomPin: freshPin,
+                    participants: [],
                     botCount: 0,
+                    isFriendGuest: false,
+                    status: 'waiting',
                   });
                   setShowPlayModeModal(false);
                   setScreen('lobby');
