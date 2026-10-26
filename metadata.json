@@ -1,0 +1,6 @@
+{
+  "name": "TRIPLE D OPEN CUP - 2D Top-Down Multiplayer Racing",
+  "description": "Giải đấu TRIPLE D OPEN CUP tích hợp Xưởng Độ Xe 7 bộ phận, Vòng Quay Gacha, Bậc Rank Liên Quân và Bảng Quản Trị Giáo Viên.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

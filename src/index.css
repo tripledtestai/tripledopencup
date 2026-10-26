@@ -1,0 +1,913 @@
+@import "tailwindcss";
+
+:root {
+  --garage-bg-deep: #0a1020;
+  --garage-bg-elevated: #0f1a33;
+  --garage-bg-card: rgba(15, 26, 51, 0.82);
+  --garage-cyan: #22d3ee;
+  --garage-amber: #fbbf24;
+  --garage-emerald: #34d399;
+  --garage-red: #f87171;
+  --garage-purple: #a78bfa;
+  --garage-blue: #38bdf8;
+  --garage-gray: #94a3b8;
+
+  /* Tier Tokens */
+  --tier-d-color: #94a3b8;
+  --tier-c-color: #34d399;
+  --tier-b-color: #38bdf8;
+  --tier-a-color: #a78bfa;
+  --tier-s-color: #fbbf24;
+
+  /* Radii & Spacing Tokens */
+  --garage-radius-lg: 18px;
+  --garage-radius-md: 12px;
+  --garage-radius-sm: 8px;
+  --garage-shadow-card: 0 14px 34px rgba(0, 0, 0, 0.65);
+  --garage-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  body {
+    font-family: 'Exo 2', 'Be Vietnam Pro', 'Barlow', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #050811;
+    color: #F1F5F9;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Exo 2', 'Orbitron', 'Rajdhani', 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-gaming {
+    font-family: 'Exo 2', 'Rajdhani', 'Be Vietnam Pro', sans-serif;
+  }
+
+  .font-sci {
+    font-family: 'Exo 2', 'Rajdhani', 'Be Vietnam Pro', 'Chakra Petch', sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "zero" 0;
+  }
+
+  .font-mono-num {
+    font-family: 'Orbitron', 'JetBrains Mono', 'Exo 2', 'Be Vietnam Pro', monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "zero" 0;
+  }
+}
+
+@keyframes hudShimmer {
+  0% {
+    transform: translateX(-150%) skewX(-24deg);
+  }
+  50%, 100% {
+    transform: translateX(250%) skewX(-24deg);
+  }
+}
+
+@keyframes titleTextShine {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes loginCardEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes trackGridMove {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 0 80px, 0 80px;
+  }
+}
+
+@keyframes trackLaneDash {
+  0% {
+    stroke-dashoffset: 120;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes speedLineFlow {
+  0% {
+    transform: translate3d(-120%, 0, 0) skewX(-32deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.75;
+  }
+  80% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(220%, 0, 0) skewX(-32deg);
+    opacity: 0;
+  }
+}
+
+@keyframes particleFloatUp {
+  0% {
+    transform: translate3d(0, 20px, 0) scale(0.7);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate3d(18px, -90px, 0) scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes hudWavePulse {
+  0%, 100% {
+    transform: scaleY(0.35);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ctaPulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 28px rgba(245, 158, 11, 0.5), 0 0 55px rgba(56, 189, 248, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 42px rgba(250, 204, 21, 0.8), 0 0 80px rgba(56, 189, 248, 0.48);
+  }
+}
+
+@keyframes hudBarReveal {
+  0% {
+    opacity: 0.3;
+    filter: brightness(1.8);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@keyframes partEquipFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.85), inset 0 0 28px rgba(52, 211, 153, 0.65);
+    transform: scale(0.985);
+  }
+  45% {
+    box-shadow: 0 0 28px 6px rgba(34, 211, 238, 0.65), inset 0 0 18px rgba(34, 211, 238, 0.35);
+    transform: scale(1.012);
+  }
+  100% {
+    box-shadow: 0 0 18px 0 rgba(52, 211, 153, 0.32), inset 0 0 0 rgba(0, 0, 0, 0);
+    transform: scale(1);
+  }
+}
+
+.animate-hud-shimmer {
+  animation: hudShimmer 3.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-title-shine {
+  background-size: 200% auto;
+  animation: titleTextShine 4.5s linear infinite;
+}
+
+.animate-login-card {
+  animation: loginCardEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-track-grid {
+  background-image:
+    linear-gradient(to bottom, rgba(245, 158, 11, 0.16) 1px, transparent 1px),
+    linear-gradient(to right, rgba(139, 92, 246, 0.14) 1px, transparent 1px);
+  background-size: 64px 80px;
+  animation: trackGridMove 1.6s linear infinite;
+}
+
+.animate-lane-dash {
+  stroke-dasharray: 28 32;
+  animation: trackLaneDash 0.85s linear infinite;
+}
+
+.animate-speed-line {
+  animation: speedLineFlow 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-particle-float {
+  animation: particleFloatUp 5.5s ease-in-out infinite;
+}
+
+.animate-hud-wave {
+  animation: hudWavePulse 1.6s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.animate-cta-pulse {
+  animation: ctaPulseGlow 2.8s ease-in-out infinite;
+}
+
+.animate-hud-bar {
+  animation: hudBarReveal 0.6s ease-out both;
+}
+
+.animate-equip-flash {
+  animation: partEquipFlash 0.48s var(--garage-ease-out) both;
+}
+
+/* Sci-Fi Combat HUD Chamfered Polygon Clip Paths */
+.hud-clip-card {
+  clip-path: polygon(
+    0 0,
+    calc(100% - 16px) 0,
+    100% 16px,
+    100% 100%,
+    16px 100%,
+    0 calc(100% - 16px)
+  );
+}
+
+.hud-clip-btn {
+  clip-path: polygon(
+    10px 0,
+    100% 0,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    0 100%,
+    0 10px
+  );
+}
+
+.hud-clip-sm {
+  clip-path: polygon(
+    0 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% 100%,
+    10px 100%,
+    0 calc(100% - 10px)
+  );
+}
+
+/* Custom sleek Dark Navy + Cyan scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a1020;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e3a5f;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #22d3ee;
+}
+
+.garage-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+.garage-scroll::-webkit-scrollbar-track {
+  background: rgba(10, 16, 32, 0.85);
+  border-radius: 6px;
+}
+.garage-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.45), rgba(59, 130, 246, 0.45));
+  border-radius: 6px;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+}
+.garage-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #22d3ee, #fbbf24);
+}
+
+html:not(.theme-light) {
+  color-scheme: dark;
+}
+
+/* ============================================================================
+   GLOBAL DAYLIGHT / LIGHT MODE DESIGN SYSTEM (html.theme-light)
+   Applies crisp Alabaster/Slate-White surfaces, high-contrast ink typography,
+   and refined borders across Login, Home, Garage, Gacha, Lobby, Podium, Admin,
+   and all Modals while keeping 2D racing track canvases authentic.
+   ============================================================================ */
+html.theme-light {
+  color-scheme: light;
+  --garage-bg-deep: #f1f5f9;
+  --garage-bg-elevated: #ffffff;
+  --garage-bg-card: rgba(255, 255, 255, 0.94);
+  --garage-shadow-card: 0 12px 32px rgba(15, 23, 42, 0.1);
+}
+
+html.theme-light body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html.theme-light ::-webkit-scrollbar-track,
+html.theme-light .garage-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb,
+html.theme-light .garage-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border: 1px solid #cbd5e1;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb:hover,
+html.theme-light .garage-scroll::-webkit-scrollbar-thumb:hover {
+  background: #0284c7;
+}
+
+/* 1. Modal Backdrops & Fullscreen Overlays in Light Mode */
+html.theme-light .fixed[class*="bg-black/85"],
+html.theme-light .fixed[class*="bg-black/80"],
+html.theme-light .fixed[class*="bg-black/75"],
+html.theme-light .fixed[class*="bg-black/70"],
+html.theme-light .fixed[class*="bg-black/55"],
+html.theme-light .fixed[class*="bg-[#03060E]"],
+html.theme-light .absolute[class*="bg-[#050811]/85"] {
+  background-color: rgba(15, 23, 42, 0.42) !important;
+}
+
+/* Non-fullscreen floating badges/pills using bg-black/... -> Frosted White Pill */
+html.theme-light :not(.fixed)[class*="bg-black/80"],
+html.theme-light :not(.fixed)[class*="bg-black/75"],
+html.theme-light :not(.fixed)[class*="bg-black/60"],
+html.theme-light :not(.fixed)[class*="bg-black/55"] {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* 2. Primary Dark Surfaces -> Crisp Daylight Alabaster & Elevated White Cards */
+html.theme-light [class*="bg-[#030712]"],
+html.theme-light [class*="bg-[#040812]"],
+html.theme-light [class*="bg-[#040814]"],
+html.theme-light [class*="bg-[#040915]"],
+html.theme-light [class*="bg-[#050811]"],
+html.theme-light [class*="bg-[#050814]"],
+html.theme-light [class*="bg-[#050912]"],
+html.theme-light [class*="bg-[#050914]"],
+html.theme-light [class*="bg-[#050A18]"],
+html.theme-light [class*="bg-[#050B16]"],
+html.theme-light [class*="bg-[#050C1A]"],
+html.theme-light [class*="bg-[#060911]"],
+html.theme-light [class*="bg-[#060a14]"],
+html.theme-light [class*="bg-[#060A14]"],
+html.theme-light [class*="bg-[#060A15]"],
+html.theme-light [class*="bg-[#060A17]"],
+html.theme-light [class*="bg-[#060b16]"],
+html.theme-light [class*="bg-[#060B16]"],
+html.theme-light [class*="bg-[#060B18]"],
+html.theme-light [class*="bg-[#060c18]"],
+html.theme-light [class*="bg-[#060D1A]"],
+html.theme-light [class*="bg-[#070B16]"],
+html.theme-light [class*="bg-[#070B18]"],
+html.theme-light [class*="bg-[#070c18]"],
+html.theme-light [class*="bg-[#070C18]"],
+html.theme-light [class*="bg-[#080D1A]"],
+html.theme-light [class*="bg-[#080e1c]"],
+html.theme-light [class*="bg-[#080E1C]"],
+html.theme-light [class*="bg-[#090D16]"],
+html.theme-light [class*="bg-[#090E1D]"],
+html.theme-light [class*="bg-[#090F22]"],
+html.theme-light [class*="bg-[#091020]"],
+html.theme-light [class*="bg-[#0a0f1c]"],
+html.theme-light [class*="bg-[#0A0F1C]"],
+html.theme-light [class*="bg-slate-950"],
+html.theme-light [class*="bg-slate-900"] {
+  background-color: #f8fafc !important;
+}
+
+html.theme-light [class*="bg-[#060D1E]"],
+html.theme-light [class*="bg-[#061226]"],
+html.theme-light [class*="bg-[#070d1b]"],
+html.theme-light [class*="bg-[#070D1B]"],
+html.theme-light [class*="bg-[#070F21]"],
+html.theme-light [class*="bg-[#081022]"],
+html.theme-light [class*="bg-[#081226]"],
+html.theme-light [class*="bg-[#091326]"],
+html.theme-light [class*="bg-[#091428]"],
+html.theme-light [class*="bg-[#09142A]"],
+html.theme-light [class*="bg-[#09152E]"],
+html.theme-light [class*="bg-[#0a1020]"],
+html.theme-light [class*="bg-[#0a1224]"],
+html.theme-light [class*="bg-[#0A1224]"],
+html.theme-light [class*="bg-[#0B0F1A]"],
+html.theme-light [class*="bg-[#0B1120]"],
+html.theme-light [class*="bg-[#0B1224]"],
+html.theme-light [class*="bg-[#0B1324]"],
+html.theme-light [class*="bg-[#0b1326]"],
+html.theme-light [class*="bg-[#0B1326]"],
+html.theme-light [class*="bg-[#0B132B]"],
+html.theme-light [class*="bg-[#0b1528]"],
+html.theme-light [class*="bg-[#0B1528]"],
+html.theme-light [class*="bg-[#0B162C]"],
+html.theme-light [class*="bg-[#0B1730]"],
+html.theme-light [class*="bg-[#0B1E38]"],
+html.theme-light [class*="bg-[#0c162c]"],
+html.theme-light [class*="bg-[#0d162c]"],
+html.theme-light [class*="bg-[#0D162C]"],
+html.theme-light [class*="bg-[#0D1628]"],
+html.theme-light [class*="bg-[#0D1830]"],
+html.theme-light [class*="bg-[#0D1B36]"],
+html.theme-light [class*="bg-[#0E172A]"],
+html.theme-light [class*="bg-[#0E1E3B]"],
+html.theme-light [class*="bg-[#0E2442]"],
+html.theme-light [class*="bg-[#0f1a33]"],
+html.theme-light [class*="bg-[#0F172A]"],
+html.theme-light [class*="bg-[#0F1D3D]"],
+html.theme-light [class*="bg-[#111827]"],
+html.theme-light [class*="bg-[#111C33]"],
+html.theme-light [class*="bg-[#12091c]"],
+html.theme-light [class*="bg-[#12091C]"],
+html.theme-light [class*="bg-[#121B35]"],
+html.theme-light [class*="bg-[#131C33]"],
+html.theme-light [class*="bg-[#131F38]"],
+html.theme-light [class*="bg-[#132240]"],
+html.theme-light [class*="bg-[#152648]"],
+html.theme-light [class*="bg-[#160b1e]"],
+html.theme-light [class*="bg-[#160B1E]"],
+html.theme-light [class*="bg-[#162032]"],
+html.theme-light [class*="bg-[#162038]"],
+html.theme-light [class*="bg-[#162238]"],
+html.theme-light [class*="bg-[#16223B]"],
+html.theme-light [class*="bg-[#1E293B]"],
+html.theme-light [class*="bg-[#1e293b]"],
+html.theme-light [class*="bg-[#1E261D]"],
+html.theme-light [class*="bg-[#233121]"],
+html.theme-light [class*="bg-[#2C392A]"],
+html.theme-light [class*="bg-slate-800"] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+html.theme-light [class*="bg-[#452708]"],
+html.theme-light [class*="bg-[#042f2e]"] {
+  background-color: #fef3c7 !important;
+}
+
+html.theme-light [class*="bg-[#1C080E]"] {
+  background-color: #ffe4e6 !important;
+}
+
+/* 3. Dark Gradients -> Clean Daylight Studio Gradients */
+html.theme-light [class*="from-black/55"],
+html.theme-light [class*="from-black/95"] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.94) !important;
+  --tw-gradient-via: rgba(248, 250, 252, 0.82) !important;
+}
+
+html.theme-light [class*="from-[#032B45]"],
+html.theme-light [class*="from-[#040812]"],
+html.theme-light [class*="from-[#040814]"],
+html.theme-light [class*="from-[#050814]"],
+html.theme-light [class*="from-[#050816]"],
+html.theme-light [class*="from-[#060911]"],
+html.theme-light [class*="from-[#060a14]"],
+html.theme-light [class*="from-[#071710]"],
+html.theme-light [class*="from-[#090D16]"],
+html.theme-light [class*="from-[#090d16]"],
+html.theme-light [class*="from-[#0a0f1c]"],
+html.theme-light [class*="from-[#0a1020]"],
+html.theme-light [class*="from-[#0b1326]"],
+html.theme-light [class*="from-[#0B1326]"],
+html.theme-light [class*="from-[#0b1528]"],
+html.theme-light [class*="from-[#0B1528]"],
+html.theme-light [class*="from-[#0B1730]"],
+html.theme-light [class*="from-[#0B1E38]"],
+html.theme-light [class*="from-[#0d162c]"],
+html.theme-light [class*="from-[#0D162C]"],
+html.theme-light [class*="from-[#0D1628]"],
+html.theme-light [class*="from-[#0E2442]"],
+html.theme-light [class*="from-[#0f1a33]"],
+html.theme-light [class*="from-[#0F172A]"],
+html.theme-light [class*="from-[#12091c]"],
+html.theme-light [class*="from-[#131F38]"],
+html.theme-light [class*="from-[#160b1e]"],
+html.theme-light [class*="from-[#16233A]"],
+html.theme-light [class*="from-[#1E293B]"],
+html.theme-light [class*="from-[#233121]"],
+html.theme-light [class*="from-[#3B0707]"] {
+  --tw-gradient-from: #ffffff !important;
+  --tw-gradient-via: #f8fafc !important;
+  --tw-gradient-to: #e2e8f0 !important;
+}
+
+html.theme-light [class*="via-[#060D1E]"],
+html.theme-light [class*="via-[#060911]"],
+html.theme-light [class*="via-[#070c18]"],
+html.theme-light [class*="via-[#071124]"],
+html.theme-light [class*="via-[#075985]"],
+html.theme-light [class*="via-[#080e1c]"],
+html.theme-light [class*="via-[#090D16]"],
+html.theme-light [class*="via-[#090d16]"],
+html.theme-light [class*="via-[#091020]"],
+html.theme-light [class*="via-[#0a0f1c]"],
+html.theme-light [class*="via-[#0a1020]"],
+html.theme-light [class*="via-[#0B1228]"],
+html.theme-light [class*="via-[#0B1324]"],
+html.theme-light [class*="via-[#0b1326]"],
+html.theme-light [class*="via-[#0B1326]"],
+html.theme-light [class*="via-[#0B132B]"],
+html.theme-light [class*="via-[#0b1528]"],
+html.theme-light [class*="via-[#0B1528]"],
+html.theme-light [class*="via-[#0B1730]"],
+html.theme-light [class*="via-[#0f1a33]"],
+html.theme-light [class*="via-[#0F172A]"],
+html.theme-light [class*="via-[#112A1E]"],
+html.theme-light [class*="via-[#152244]"],
+html.theme-light [class*="via-[#172554]"],
+html.theme-light [class*="via-[#1E1B4B]"],
+html.theme-light [class*="via-[#1E293B]"],
+html.theme-light [class*="via-[#3B4E38]"],
+html.theme-light [class*="via-[#7F1D1D]"] {
+  --tw-gradient-via: #f1f5f9 !important;
+}
+
+html.theme-light [class*="to-[#040814]"],
+html.theme-light [class*="to-[#050912]"],
+html.theme-light [class*="to-[#050914]"],
+html.theme-light [class*="to-[#060b16]"],
+html.theme-light [class*="to-[#060B16]"],
+html.theme-light [class*="to-[#060D1E]"],
+html.theme-light [class*="to-[#070c18]"],
+html.theme-light [class*="to-[#080e1c]"],
+html.theme-light [class*="to-[#090D16]"],
+html.theme-light [class*="to-[#090d16]"],
+html.theme-light [class*="to-[#0a0f1c]"],
+html.theme-light [class*="to-[#0a1020]"],
+html.theme-light [class*="to-[#0a1224]"],
+html.theme-light [class*="to-[#0B1224]"],
+html.theme-light [class*="to-[#0b1326]"],
+html.theme-light [class*="to-[#0B1326]"],
+html.theme-light [class*="to-[#0B132B]"],
+html.theme-light [class*="to-[#0B1730]"],
+html.theme-light [class*="to-[#0D1527]"],
+html.theme-light [class*="to-[#0F172A]"],
+html.theme-light [class*="to-[#12091c]"],
+html.theme-light [class*="to-[#120B0B]"],
+html.theme-light [class*="to-[#132448]"],
+html.theme-light [class*="to-[#140E2E]"],
+html.theme-light [class*="to-[#160b1e]"],
+html.theme-light [class*="to-[#1A0B32]"],
+html.theme-light [class*="to-[#1A1C13]"],
+html.theme-light [class*="to-[#1D0B38]"],
+html.theme-light [class*="to-[#233121]"] {
+  --tw-gradient-to: #e2e8f0 !important;
+}
+
+/* Specific Light Mode Overlay styling for Warmup Canvas in Room views */
+html.theme-light .warmup-canvas-container [class*="bg-gradient-to-b"],
+html.theme-light .warmup-canvas-container [class*="bg-gradient-to-t"],
+html.theme-light [data-testid="warmup-canvas-container"] [class*="bg-gradient-to-b"],
+html.theme-light [data-testid="warmup-canvas-container"] [class*="bg-gradient-to-t"] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.96) !important;
+  --tw-gradient-via: rgba(248, 250, 252, 0.82) !important;
+  --tw-gradient-to: transparent !important;
+}
+
+html.theme-light .warmup-canvas-container [class*="bg-black/60"],
+html.theme-light [data-testid="warmup-canvas-container"] [class*="bg-black/60"] {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* Gold / Top-1 Card Gradients in Light Mode */
+html.theme-light [class*="from-[#3B2106]"],
+html.theme-light [class*="from-[#271C08]"],
+html.theme-light [class*="from-[#23160C]"] {
+  --tw-gradient-from: #fef3c7 !important;
+  --tw-gradient-via: #fffbeb !important;
+  --tw-gradient-to: #ffffff !important;
+}
+
+/* 4. Tinted Dark Status Badges -> Daylight Tinted Badges */
+html.theme-light [class*="bg-cyan-950"] {
+  background-color: #e0f2fe !important;
+}
+html.theme-light [class*="bg-amber-950"] {
+  background-color: #fef3c7 !important;
+}
+html.theme-light [class*="bg-rose-950"],
+html.theme-light [class*="bg-red-950"] {
+  background-color: #ffe4e6 !important;
+}
+html.theme-light [class*="bg-emerald-950"] {
+  background-color: #d1fae5 !important;
+}
+html.theme-light [class*="bg-sky-950"] {
+  background-color: #e0f2fe !important;
+}
+html.theme-light [class*="bg-purple-950"] {
+  background-color: #f3e8ff !important;
+}
+
+/* 5. Gradient Clipped Titles (.bg-clip-text) -> Deep High-Contrast Championship Gradient */
+html.theme-light .bg-clip-text {
+  --tw-gradient-from: #0369a1 !important;
+  --tw-gradient-via: #d97706 !important;
+  --tw-gradient-to: #ea580c !important;
+  filter: none !important;
+}
+
+/* 6. Typography Remapping for Crisp Daylight Legibility (including /opacity modifiers) */
+html.theme-light .text-white:not(.gacha-dark-vault):not(.gacha-dark-vault *),
+html.theme-light [class*="text-white/"]:not(.gacha-dark-vault):not(.gacha-dark-vault *),
+html.theme-light [class*="text-slate-100"]:not(.gacha-dark-vault):not(.gacha-dark-vault *),
+html.theme-light [class*="text-slate-200"]:not(.gacha-dark-vault):not(.gacha-dark-vault *),
+html.theme-light [class*="text-[#F1F5F9]"]:not(.gacha-dark-vault):not(.gacha-dark-vault *),
+html.theme-light [class*="text-[#E2E8F0]"]:not(.gacha-dark-vault):not(.gacha-dark-vault *) {
+  color: #0f172a !important;
+}
+
+/* Prevent hover:text-white on light-mode neutral buttons from turning white-on-white */
+html.theme-light [class*="hover:text-white"]:hover:not([class*="hover:bg-rose-"]):not([class*="hover:bg-red-"]):not([class*="hover:bg-[#E11D48]"]):not([class*="hover:bg-sky-"]):not([class*="hover:bg-cyan-"]):not([class*="hover:bg-emerald-"]):not(.gacha-dark-vault):not(.gacha-dark-vault *) {
+  color: #0f172a !important;
+}
+
+/* Preserve crisp white text on solid vibrant buttons & ribbons (including hover states) */
+html.theme-light [class*="bg-[#0284c7]"].text-white,
+html.theme-light [class*="bg-[#0284C7]"].text-white,
+html.theme-light [class*="bg-[#16A34A]"].text-white,
+html.theme-light [class*="bg-[#D97706]"].text-white,
+html.theme-light [class*="bg-sky-600"].text-white,
+html.theme-light [class*="bg-amber-600"].text-white,
+html.theme-light [class*="bg-rose-500"].text-white,
+html.theme-light [class*="bg-rose-600"].text-white,
+html.theme-light [class*="from-rose-600"].text-white,
+html.theme-light [class*="from-purple-600"].text-white,
+html.theme-light [class*="from-emerald-500"].text-white,
+html.theme-light [class*="from-emerald-600"].text-white,
+html.theme-light [class*="from-sky-500"].text-white,
+html.theme-light [class*="from-cyan-500"].text-white,
+html.theme-light [class*="hover:bg-rose-600"]:hover,
+html.theme-light [class*="hover:bg-[#E11D48]"]:hover,
+html.theme-light [class*="from-[#059669]"].text-white,
+html.theme-light [class*="from-[#7e22ce]"].text-white,
+html.theme-light [class*="from-[#065F46]"].text-white,
+html.theme-light [class*="from-[#be185d]"].text-white,
+html.theme-light [class*="from-[#0284C7]"].text-white,
+html.theme-light [class*="from-[#991B1B]"].text-white,
+html.theme-light [class*="from-amber-300"].text-white {
+  color: #ffffff !important;
+}
+
+html.theme-light [class*="hover:bg-rose-600"]:hover {
+  background-color: #e11d48 !important;
+  border-color: #be123c !important;
+  color: #ffffff !important;
+}
+
+html.theme-light [class*="hover:bg-[#E11D48]"]:hover {
+  background-color: #e11d48 !important;
+  border-color: #be123c !important;
+  color: #ffffff !important;
+}
+
+html.theme-light [class*="text-slate-300"],
+html.theme-light [class*="text-[#CBD5E1]"],
+html.theme-light [class*="text-slate-400"],
+html.theme-light [class*="text-[#94A3B8]"] {
+  color: #334155 !important;
+}
+
+html.theme-light [class*="text-[#FEF08A]"],
+html.theme-light [class*="text-[#fef08a]"],
+html.theme-light [class*="text-[#FEF9C3]"],
+html.theme-light [class*="text-[#FDE047]"],
+html.theme-light [class*="text-[#FACC15]"],
+html.theme-light [class*="text-[#fbbf24]"],
+html.theme-light [class*="text-amber-200"],
+html.theme-light [class*="text-amber-300"],
+html.theme-light [class*="text-amber-400"] {
+  color: #b45309 !important;
+}
+
+html.theme-light [class*="text-[#7DD3FC]"],
+html.theme-light [class*="text-[#67e8f9]"],
+html.theme-light [class*="text-[#38BDF8]"],
+html.theme-light [class*="text-[#22d3ee]"],
+html.theme-light [class*="text-cyan-200"],
+html.theme-light [class*="text-cyan-300"],
+html.theme-light [class*="text-cyan-400"],
+html.theme-light [class*="text-sky-300"],
+html.theme-light [class*="text-sky-400"],
+html.theme-light [class*="text-blue-200"] {
+  color: #0369a1 !important;
+}
+
+html.theme-light [class*="text-emerald-300"],
+html.theme-light [class*="text-emerald-400"],
+html.theme-light [class*="text-[#34d399]"],
+html.theme-light [class*="text-[#34D399]"],
+html.theme-light [class*="text-[#4ADE80]"],
+html.theme-light [class*="text-[#6ee7b7]"],
+html.theme-light [class*="text-[#A7C4A0]"] {
+  color: #047857 !important;
+}
+
+html.theme-light [class*="text-rose-100"],
+html.theme-light [class*="text-rose-200"],
+html.theme-light [class*="text-rose-300"],
+html.theme-light [class*="text-rose-400"],
+html.theme-light [class*="text-[#f87171]"],
+html.theme-light [class*="text-red-100"],
+html.theme-light [class*="text-pink-300"],
+html.theme-light [class*="text-pink-400"] {
+  color: #be123c !important;
+}
+
+html.theme-light [class*="text-purple-300"] {
+  color: #6d28d9 !important;
+}
+
+/* Remove dark drop-shadows on text in Light Mode so letters stay razor-sharp */
+html.theme-light [class*="drop-shadow-[0_2px_"]:not(.gacha-luxury-preserve) {
+  filter: none !important;
+}
+
+/* 7. Borders & Dividers in Light Mode */
+html.theme-light [class*="border-slate-800"],
+html.theme-light [class*="border-slate-700"],
+html.theme-light [class*="border-white/10"],
+html.theme-light [class*="border-white/15"] {
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light [class*="divide-slate-800"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* 8. Inputs & Form Controls in Light Mode */
+html.theme-light input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+html.theme-light select,
+html.theme-light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+
+html.theme-light input::placeholder,
+html.theme-light textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* 9. Softened Daylight Card Shadows instead of Heavy Black Glows */
+html.theme-light [class*="shadow-[0_28px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_25px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_24px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_20px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_16px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_12px_"]:not(.gacha-luxury-preserve),
+html.theme-light [class*="shadow-[0_10px_"]:not(.gacha-luxury-preserve) {
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.1), 0 2px 8px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* 10. IN-RACE COCKPIT TELEMETRY & HUD ISOLATION
+   Ensure racing instruments (speedometer, nitro tank, minimap,
+   leaderboard, cockpit controls) retain their high-contrast,
+   anti-glare dark esports styling under all circumstances. */
+html.theme-light .race-canvas-root,
+html.theme-light [data-testid="race-canvas-root"],
+html.theme-light .in-race-hud,
+html.theme-light .in-race-hud * {
+  --tw-gradient-from: initial;
+  --tw-gradient-via: initial;
+  --tw-gradient-to: initial;
+}
+
+html.theme-light .race-canvas-root [class*="bg-slate-950"],
+html.theme-light .race-canvas-root [class*="bg-slate-900"],
+html.theme-light .race-canvas-root [class*="bg-slate-800"],
+html.theme-light .race-canvas-root [class*="bg-[#0F172A]"],
+html.theme-light .race-canvas-root [class*="bg-[#1E261D]"],
+html.theme-light .race-canvas-root [class*="bg-[#020617]"],
+html.theme-light .race-canvas-root [class*="bg-[#050B18]"],
+html.theme-light .race-canvas-root [class*="bg-black"],
+html.theme-light .race-canvas-root [class*="bg-red-950"],
+html.theme-light .race-canvas-root [class*="bg-emerald-950"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-slate-950"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-slate-900"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-slate-800"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-[#0F172A]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-[#1E261D]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-[#020617]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-[#050B18]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-black"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-red-950"],
+html.theme-light [data-testid="race-canvas-root"] [class*="bg-emerald-950"],
+html.theme-light .in-race-hud [class*="bg-slate-950"],
+html.theme-light .in-race-hud [class*="bg-slate-900"],
+html.theme-light .in-race-hud [class*="bg-slate-800"],
+html.theme-light .in-race-hud [class*="bg-[#0F172A]"],
+html.theme-light .in-race-hud [class*="bg-[#1E261D]"],
+html.theme-light .in-race-hud [class*="bg-[#020617]"],
+html.theme-light .in-race-hud [class*="bg-[#050B18]"],
+html.theme-light .in-race-hud [class*="bg-black"],
+html.theme-light .in-race-hud [class*="bg-red-950"],
+html.theme-light .in-race-hud [class*="bg-emerald-950"] {
+  background-color: revert !important;
+}
+
+html.theme-light .race-canvas-root .text-white,
+html.theme-light .race-canvas-root [class*="text-white"],
+html.theme-light .race-canvas-root [class*="text-slate-100"],
+html.theme-light .race-canvas-root [class*="text-slate-200"],
+html.theme-light .race-canvas-root [class*="text-slate-300"],
+html.theme-light .race-canvas-root [class*="text-slate-400"],
+html.theme-light .race-canvas-root [class*="text-amber-200"],
+html.theme-light .race-canvas-root [class*="text-amber-300"],
+html.theme-light .race-canvas-root [class*="text-amber-400"],
+html.theme-light .race-canvas-root [class*="text-[#FACC15]"],
+html.theme-light .race-canvas-root [class*="text-[#FEF08A]"],
+html.theme-light .race-canvas-root [class*="text-red-200"],
+html.theme-light .race-canvas-root [class*="text-red-400"],
+html.theme-light [data-testid="race-canvas-root"] .text-white,
+html.theme-light [data-testid="race-canvas-root"] [class*="text-white"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-slate-100"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-slate-200"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-slate-300"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-slate-400"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-amber-200"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-amber-300"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-amber-400"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-[#FACC15]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-[#FEF08A]"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-red-200"],
+html.theme-light [data-testid="race-canvas-root"] [class*="text-red-400"],
+html.theme-light .in-race-hud .text-white,
+html.theme-light .in-race-hud [class*="text-white"],
+html.theme-light .in-race-hud [class*="text-slate-100"],
+html.theme-light .in-race-hud [class*="text-slate-200"],
+html.theme-light .in-race-hud [class*="text-slate-300"],
+html.theme-light .in-race-hud [class*="text-slate-400"],
+html.theme-light .in-race-hud [class*="text-amber-200"],
+html.theme-light .in-race-hud [class*="text-amber-300"],
+html.theme-light .in-race-hud [class*="text-amber-400"],
+html.theme-light .in-race-hud [class*="text-[#FACC15]"],
+html.theme-light .in-race-hud [class*="text-[#FEF08A]"],
+html.theme-light .in-race-hud [class*="text-red-200"],
+html.theme-light .in-race-hud [class*="text-red-400"] {
+  color: revert !important;
+}
+
+html.theme-light .race-canvas-root [class*="border-slate-800"],
+html.theme-light .race-canvas-root [class*="border-slate-700"],
+html.theme-light .race-canvas-root [class*="border-white/"],
+html.theme-light [data-testid="race-canvas-root"] [class*="border-slate-800"],
+html.theme-light [data-testid="race-canvas-root"] [class*="border-slate-700"],
+html.theme-light [data-testid="race-canvas-root"] [class*="border-white/"],
+html.theme-light .in-race-hud [class*="border-slate-800"],
+html.theme-light .in-race-hud [class*="border-slate-700"],
+html.theme-light .in-race-hud [class*="border-white/"] {
+  border-color: revert !important;
+}
+
+/* 11. GACHA CELESTIA LUXURY PRESERVATION IN LIGHT MODE */
+html.theme-light .gacha-dark-vault .text-white,
+html.theme-light .gacha-dark-vault [class*="text-white"] {
+  color: #ffffff !important;
+}
+html.theme-light .gacha-dark-vault [class*="text-[#FEF08A]"] {
+  color: #fef08a !important;
+}
+html.theme-light .gacha-dark-vault [class*="text-[#FACC15]"] {
+  color: #facc15 !important;
+}
+html.theme-light .gacha-dark-vault [class*="text-[#4ADE80]"] {
+  color: #4ade80 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
