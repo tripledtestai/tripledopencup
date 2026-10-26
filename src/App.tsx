@@ -664,15 +664,16 @@ export default function App() {
       const studentResults = results.filter((r) => !r.isBoss);
       const knockdowns = bossFinal?.bossKnockdowns || 0;
       // Strictly won ONLY when Boss died (HP <= 0 or 3 knockdowns)
-      const bossDied =
-        (bossFinal?.bossHp !== undefined && bossFinal.bossHp <= 0) ||
-        knockdowns >= 3 ||
-        (bossFinal?.finished && bossFinal.speed === 0);
-      const teamWon = Boolean(bossDied);
+      const bossDied = Boolean(
+        bossFinal &&
+          ((bossFinal.bossHp !== undefined && bossFinal.bossHp <= 0) ||
+            knockdowns >= 3)
+      );
+      const teamWon = bossDied;
 
       let unlockedTitleName: string | undefined;
       for (const sr of studentResults) {
-        sr.coinsEarned = teamWon ? 50 : 15;
+        sr.coinsEarned = teamWon ? 50 : 0;
       }
 
       const acc = isTeacher ? dualDB.getTeacherProfile() : currentStudent;
