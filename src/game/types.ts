@@ -635,6 +635,7 @@ export interface LobbyConfig {
   laps: number;
   botCount: number;
   status: 'waiting' | 'racing' | 'finished';
+  raceSessionId?: string;
   isAutoMatchmaking?: boolean;
   isFriendGuest?: boolean;
   isPrivateRoom?: boolean;

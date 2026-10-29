@@ -9,6 +9,7 @@ import {
   Unsubscribe,
 } from 'firebase/database';
 import {
+  ALL_PARTS,
   DEFAULT_LOADOUT,
   DEFAULT_TUNING_LOADOUT,
   EMPTY_TUNING_PRESETS,
@@ -23,12 +24,14 @@ import {
   type ComputedTuningPhysics,
 } from '../game/rules';
 import {
+  CarLoadout,
   ComputedTuningStats,
   GameSaveCheckpoint,
   Giftcode,
   LobbyConfig,
   MatchRecord,
   MatchmakingRoomEntry,
+  PartSlot,
   StudentAccount,
   TuningLoadout,
 } from '../game/types';
@@ -639,6 +642,116 @@ class DualDatabaseService {
       set(ref(this.fbDb, `tripled/rooms/${roomPin}`), null).catch(() => {});
       set(ref(this.fbDb, `rooms/${roomPin}`), null).catch(() => {});
     }
+  }
+
+  /**
+   * Clears stale racer positions and hazards in Firebase RTDB before starting a new race
+   * or returning to the lobby so old `finished: true` states never trigger the 60s timer on Lap 1!
+   */
+  public clearRoomRaceData(roomPin: string): void {
+    if (this.fbDb && this.fbConnected && roomPin) {
+      set(ref(this.fbDb, `tripled/rooms/${roomPin}/racers`), null).catch(() => {});
+      set(ref(this.fbDb, `tripled/rooms/${roomPin}/hazards`), null).catch(() => {});
+    }
+  }
+
+  /**
+   * Resets a room's state in Firebase RTDB back to 'waiting' after a race finishes or on "Đua Tiếp",
+   * preventing guests from immediately re-launching into a finished race.
+   */
+  public resetRoomForNextRace(
+    roomPin: string,
+    isHost: boolean = false,
+    updatedLobby?: LobbyConfig
+  ): void {
+    if (!roomPin) return;
+    this.clearRoomRaceData(roomPin);
+    if (this.fbDb && this.fbConnected) {
+      const patch: Record<string, any> = {
+        status: 'waiting',
+        updatedAt: Date.now(),
+      };
+      if (isHost && updatedLobby) {
+        const networkParticipants = (updatedLobby.participants || []).map((p) => ({
+          ...p,
+          tuningLoadout: p.isBot ? p.tuningLoadout : undefined,
+        }));
+        patch.lobby = sanitizeForFirebase({
+          ...updatedLobby,
+          status: 'waiting',
+          participants: networkParticipants,
+        });
+      }
+      update(ref(this.fbDb, `tripled/rooms/${roomPin}`), patch).catch(() => {});
+      if (isHost) {
+        set(ref(this.fbDb, `tripled/rooms/${roomPin}/events`), null).catch(() => {});
+      }
+    }
+  }
+
+  /**
+   * Shared Room Roster Presence in Firebase RTDB (`tripled/rooms/${roomPin}/roster/${playerId}`).
+   * Ensures that when >5 players join concurrently, no participant is ever dropped due to race conditions!
+   */
+  public syncParticipantToRoomRoster(
+    roomPin: string,
+    participant: LobbyConfig['participants'][0]
+  ): void {
+    if (this.fbDb && this.fbConnected && roomPin && participant?.id) {
+      const safeKey = encodeFirebaseKey(participant.id.toLowerCase());
+      const safeEntry = sanitizeForFirebase({
+        ...participant,
+        tuningLoadout: participant.isBot ? participant.tuningLoadout : undefined,
+        updatedAt: Date.now(),
+      });
+      set(
+        ref(this.fbDb, `tripled/rooms/${roomPin}/roster/${safeKey}`),
+        safeEntry
+      ).catch(() => {});
+    }
+  }
+
+  public removeParticipantFromRoomRoster(
+    roomPin: string,
+    playerId: string
+  ): void {
+    if (this.fbDb && this.fbConnected && roomPin && playerId) {
+      const safeKey = encodeFirebaseKey(playerId.toLowerCase());
+      set(
+        ref(this.fbDb, `tripled/rooms/${roomPin}/roster/${safeKey}`),
+        null
+      ).catch(() => {});
+    }
+  }
+
+  public clearRoomRoster(roomPin: string): void {
+    if (this.fbDb && this.fbConnected && roomPin) {
+      set(ref(this.fbDb, `tripled/rooms/${roomPin}/roster`), null).catch(() => {});
+    }
+  }
+
+  public listenRoomRoster(
+    roomPin: string,
+    onRoster: (roster: LobbyConfig['participants']) => void
+  ): () => void {
+    if (this.fbDb && this.fbConnected && roomPin) {
+      const rosterRef = ref(this.fbDb, `tripled/rooms/${roomPin}/roster`);
+      return onValue(rosterRef, (snap) => {
+        const val = snap.val();
+        if (!val || typeof val !== 'object') {
+          onRoster([]);
+          return;
+        }
+        const list: LobbyConfig['participants'] = [];
+        for (const [, p] of Object.entries(val) as [string, any][]) {
+          if (p && typeof p === 'object' && p.id && p.username) {
+            list.push(p as LobbyConfig['participants'][0]);
+          }
+        }
+        onRoster(list);
+      });
+    }
+    return () => {};
   }
 
   // Real-time Online Auto-Matchmaking Registry
@@ -1455,6 +1568,130 @@ class DualDatabaseService {
     }
     this.persistAndSync('all');
     return true;
+  }
+
+  /**
+   * Teacher Admin Feature: Remove a specific skin/part or reset ALL non-starter skins of a student.
+   * Automatically resets any equipped slot referencing the removed skin back to DEFAULT_LOADOUT.
+   */
+  public removeStudentSkin(
+    email: string,
+    partId: string | 'ALL'
+  ): { ok: boolean; message: string; student?: StudentAccount } {
+    const cleanEmail = email.trim().toLowerCase();
+    const acc = this.students[cleanEmail];
+    if (!acc) {
+      return {
+        ok: false,
+        message: 'Không tìm thấy tài khoản học sinh này!',
+      };
+    }
+
+    const slots: PartSlot[] = [
+      'chassis',
+      'paint',
+      'decal',
+      'wheels',
+      'spoiler',
+      'underglow',
+      'trail',
+    ];
+
+    if (partId === 'ALL') {
+      const nextOwned = [...STARTER_OWNED_PARTS];
+      const nextLoadout: CarLoadout = { ...DEFAULT_LOADOUT };
+      const nextPresets = normalizeTuningPresets(acc.tuningPresets, cleanEmail).map(
+        (pr) => (pr ? { ...pr, carLoadout: { ...DEFAULT_LOADOUT } } : null)
+      );
+
+      const updated: StudentAccount = {
+        ...acc,
+        ownedParts: nextOwned,
+        loadout: nextLoadout,
+        tuningPresets: nextPresets,
+        lastActive: Date.now(),
+      };
+      this.students[cleanEmail] = updated;
+      this.syncStudentToCloud(cleanEmail);
+
+      this.lobby.participants = (this.lobby.participants || []).map((p) =>
+        p.id.toLowerCase() === cleanEmail ? { ...p, loadout: nextLoadout } : p
+      );
+      this.persistAndSync('all');
+      return {
+        ok: true,
+        student: updated,
+        message: `Đã xóa toàn bộ skin mở khóa của "${acc.username}" và đưa ngoại hình xe về mặc định!`,
+      };
+    }
+
+    if (STARTER_OWNED_PARTS.includes(partId)) {
+      return {
+        ok: false,
+        message: 'Không thể xóa trang bị mặc định cơ bản của hệ thống!',
+      };
+    }
+
+    const partInfo = ALL_PARTS.find((p) => p.id === partId);
+    const currentOwned = Array.isArray(acc.ownedParts)
+      ? acc.ownedParts
+      : [...STARTER_OWNED_PARTS];
+
+    if (!currentOwned.includes(partId)) {
+      return {
+        ok: false,
+        message: 'Học sinh này hiện không sở hữu skin/phụ kiện này!',
+      };
+    }
+
+    const nextOwned = Array.from(
+      new Set([
+        ...STARTER_OWNED_PARTS,
+        ...currentOwned.filter((id) => id !== partId),
+      ])
+    );
+
+    const nextLoadout: CarLoadout = { ...(acc.loadout || DEFAULT_LOADOUT) };
+    for (const s of slots) {
+      if (nextLoadout[s] === partId || !nextOwned.includes(nextLoadout[s])) {
+        nextLoadout[s] = DEFAULT_LOADOUT[s];
+      }
+    }
+
+    const nextPresets = normalizeTuningPresets(acc.tuningPresets, cleanEmail).map(
+      (pr) => {
+        if (!pr || !pr.carLoadout) return pr;
+        const cl: CarLoadout = { ...pr.carLoadout };
+        for (const s of slots) {
+          if (cl[s] === partId || !nextOwned.includes(cl[s])) {
+            cl[s] = DEFAULT_LOADOUT[s];
+          }
+        }
+        return { ...pr, carLoadout: cl };
+      }
+    );
+
+    const updated: StudentAccount = {
+      ...acc,
+      ownedParts: nextOwned,
+      loadout: nextLoadout,
+      tuningPresets: nextPresets,
+      lastActive: Date.now(),
+    };
+
+    this.students[cleanEmail] = updated;
+    this.syncStudentToCloud(cleanEmail);
+
+    this.lobby.participants = (this.lobby.participants || []).map((p) =>
+      p.id.toLowerCase() === cleanEmail ? { ...p, loadout: nextLoadout } : p
+    );
+    this.persistAndSync('all');
+
+    return {
+      ok: true,
+      student: updated,
+      message: `Đã xóa skin "${partInfo?.name || partId}" khỏi tài khoản "${acc.username}"!`,
+    };
   }
 
   // Game Save Checkpoints (Điểm Mốc Lưu Game)

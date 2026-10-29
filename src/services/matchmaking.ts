@@ -60,7 +60,7 @@ class MatchmakingService {
     isHost: false,
     statusMessage: '',
     matchedPlayers: [],
-    maxPlayers: 4,
+    maxPlayers: 12,
     discoveredRooms: [],
     error: null,
   };
@@ -247,10 +247,11 @@ class MatchmakingService {
     this.onLaunchCallback = onLaunch;
 
     const chosenMapId = options?.mapId || MAPS[Math.floor(Math.random() * Math.min(6, MAPS.length))].id;
-    const maxPlayers = options?.maxPlayers || 4;
+    const maxPlayers = options?.maxPlayers || 12;
 
     this.updateState({
       radarMode: 'host',
+      maxPlayers,
       elapsedSec: 0,
       countdownSec: null,
       discoveredRooms: [],
@@ -295,7 +296,7 @@ class MatchmakingService {
         const mySessionId = multiplayerService.clientSessionId;
         const available = Object.values(rooms).filter((r) => {
           if (!r || !r.roomPin || r.status !== 'waiting') return false;
-          if (r.participantsCount >= (r.maxPlayers || 4)) return false;
+          if (r.participantsCount >= (r.maxPlayers || 12)) return false;
           if (now - (r.updatedAt || r.createdAt || 0) >= 45000) return false;
           if (r.hostSessionId && r.hostSessionId === mySessionId) return false;
           if (!r.hostSessionId && r.hostId && r.hostId.toLowerCase() === myId.toLowerCase()) return false;
@@ -411,7 +412,60 @@ class MatchmakingService {
   private setupMultiplayerListener() {
     this.unsubNetMsg?.();
     this.unsubNetMsg = multiplayerService.subscribe((msg) => {
-      if (msg.type === 'JOIN_ACCEPTED' || msg.type === 'LOBBY_UPDATE') {
+      if (msg.type === 'JOIN_REQUEST' && this.state.isHost && this.state.roomPin) {
+        const guest = msg.student;
+        if (guest && guest.id) {
+          this.addOrUpdateMatchedPlayer({
+            id: guest.id,
+            username: guest.username,
+            rp: guest.rp,
+            loadout: guest.loadout,
+            isBot: false,
+            isHost: false,
+          });
+          const participants: LobbyConfig['participants'] = this.state.matchedPlayers.map(
+            (p, idx) => ({
+              id: p.id,
+              username: p.username,
+              rp: p.rp,
+              teamId: (idx % 2) + 1,
+              loadout: p.loadout,
+              isBot: Boolean(p.isBot),
+              isTeacher: p.id === 'teacher_host',
+            })
+          );
+          const currentLobby: LobbyConfig = {
+            roomPin: this.state.roomPin,
+            friendRoomPin: this.state.roomPin,
+            playModeCategory: 'friends_pvp',
+            hostMode: 'play',
+            raceMode: 'solo',
+            teamCount: 2,
+            mapId: this.state.mapId,
+            laps: 3,
+            botCount: 0,
+            status: 'waiting',
+            isAutoMatchmaking: true,
+            participants,
+          };
+          multiplayerService.broadcast({
+            type: 'JOIN_ACCEPTED',
+            lobby: currentLobby,
+            participants,
+            assignedGuestId: guest.id,
+            senderSessionId: msg._senderSessionId,
+          });
+          dualDB.syncRoomState(this.state.roomPin, {
+            status: 'waiting',
+            lobby: currentLobby,
+            updatedAt: Date.now(),
+          });
+        }
+      } else if (msg.type === 'JOIN_ACCEPTED' || msg.type === 'LOBBY_UPDATE') {
+        const incomingMapId = msg.lobby?.mapId;
+        if (incomingMapId && incomingMapId !== this.state.mapId) {
+          this.updateState({ mapId: incomingMapId });
+        }
         const participants = msg.type === 'JOIN_ACCEPTED' ? msg.participants : msg.lobby.participants;
         if (Array.isArray(participants)) {
           this.syncRosterFromParticipants(participants);
@@ -457,15 +511,20 @@ class MatchmakingService {
       soundEngine.playFanfare(false);
     }
 
-    // If we're host and have at least 2 players, start countdown
-    if (this.state.isHost && nextCount >= 2 && this.state.countdownSec === null) {
-      this.startCountdown(5);
+    // If we're host and have at least 2 players, give a 12s window (and reset to 8s when new players join) so 6+ players joining together all make it into the same match!
+    if (this.state.isHost && nextCount >= 2) {
+      if (nextCount >= this.state.maxPlayers) {
+        this.startCountdown(3);
+      } else if (this.state.countdownSec === null || nextCount > prevCount) {
+        this.startCountdown(12);
+      }
     }
   }
 
   private addOrUpdateMatchedPlayer(info: MatchedPlayerInfo) {
     const current = [...this.state.matchedPlayers];
-    const idx = current.findIndex((p) => p.id === info.id);
+    const idx = current.findIndex((p) => p.id.toLowerCase() === info.id.toLowerCase());
+    const isNew = idx < 0;
     if (idx >= 0) {
       current[idx] = { ...current[idx], ...info };
     } else {
@@ -482,8 +541,12 @@ class MatchmakingService {
           : this.state.statusMessage,
     });
 
-    if (this.state.isHost && current.length >= 2 && this.state.countdownSec === null) {
-      this.startCountdown(5);
+    if (this.state.isHost && current.length >= 2) {
+      if (current.length >= this.state.maxPlayers) {
+        this.startCountdown(3);
+      } else if (this.state.countdownSec === null || isNew) {
+        this.startCountdown(12);
+      }
     }
   }
 
@@ -542,9 +605,15 @@ class MatchmakingService {
       return participant;
     });
 
+    const raceSessionId = `race_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const activePin = this.state.roomPin || 'quick_match';
+    dualDB.clearRoomRaceData(activePin);
+    multiplayerService.clearRaceCaches();
+
     const finalLobby: LobbyConfig = {
-      roomPin: this.state.roomPin || 'quick_match',
-      playModeCategory: 'quick_match',
+      roomPin: activePin,
+      friendRoomPin: activePin,
+      playModeCategory: 'friends_pvp',
       hostMode: 'play',
       raceMode: 'solo',
       teamCount: 2,
@@ -552,7 +621,9 @@ class MatchmakingService {
       laps: 3,
       botCount: 0,
       status: 'racing',
+      raceSessionId,
       isAutoMatchmaking: true,
+      isFriendGuest: false,
       participants: finalRoster,
     };
 
@@ -560,6 +631,15 @@ class MatchmakingService {
       type: 'START_RACE',
       lobby: finalLobby,
     });
+
+    if (this.state.roomPin) {
+      dualDB.syncRoomState(this.state.roomPin, {
+        status: 'racing',
+        raceSessionId,
+        lobby: finalLobby,
+        updatedAt: Date.now(),
+      });
+    }
 
     dualDB.updateLobby(finalLobby);
     soundEngine.playFanfare(true);

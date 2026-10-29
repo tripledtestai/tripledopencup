@@ -648,6 +648,9 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
       typeof navigator !== 'undefined' &&
       (navigator.webdriver || /HeadlessChrome/i.test(navigator.userAgent));
 
+    // Clear any stale remote racer positions/hazards from a previous race immediately on mount
+    multiplayerService.clearRaceCaches();
+
     const map =
       MAPS.find((m) => m.id === lobby.mapId) || MAPS[0];
     const diffProfile =
@@ -1664,8 +1667,8 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
         }
 
         if (raidBossDef.id === 'tuan_anh') {
-          // Salvo of 3 Homing Missiles + 4 Nitro Fire Trail Hazards
-          for (const spreadAngle of [-0.18, 0, 0.18]) {
+          // Salvo of 5 Homing Missiles + 6 Nitro Fire Trail Hazards
+          for (const spreadAngle of [-0.3, -0.15, 0, 0.15, 0.3]) {
             const ang = bossCar.angle + spreadAngle;
             hazards.push({
               id: `boss_msl_${Date.now()}_${spreadAngle}`,
@@ -1673,8 +1676,8 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               ownerId: bossCar.id,
               x: bossCar.x + Math.cos(ang) * 42,
               y: bossCar.y + Math.sin(ang) * 42,
-              vx: Math.cos(ang) * 620,
-              vy: Math.sin(ang) * 620,
+              vx: Math.cos(ang) * 680,
+              vy: Math.sin(ang) * 680,
               angle: ang,
               ttl: 7.0,
               waypointTargetIdx: bossCar.waypointIndex,
@@ -1682,7 +1685,7 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               isBossHazard: true,
             });
           }
-          for (let f = 1; f <= 4; f++) {
+          for (let f = 1; f <= 6; f++) {
             hazards.push({
               id: `boss_fire_${Date.now()}_${f}`,
               type: 'boss_fire',
@@ -1699,7 +1702,7 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
           }
           soundEngine.playMissileLaunch();
           pushKillfeed(
-            `🔥 BOSS ĐẶNG TUẤN ANH phóng Chùm 3 Tên Lửa Tầm Nhiệt & Vệt Lửa V12!`,
+            `🔥 BOSS ĐẶNG TUẤN ANH phóng Chùm 5 Tên Lửa Tầm Nhiệt & Vệt Lửa V12!`,
             'rocket',
             nowSec
           );
@@ -1707,20 +1710,20 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
           bossCryoWaveVisualTimer = 1.25;
           for (const r of racers) {
             if (r.isBoss || r.finished || r.invulnerableTimer > 0) continue;
-            if (Math.hypot(r.x - bossCar.x, r.y - bossCar.y) <= 340) {
-              r.cryoSlowTimer = 2.5;
-              r.speed *= 0.5;
+            if (Math.hypot(r.x - bossCar.x, r.y - bossCar.y) <= 450) {
+              r.cryoSlowTimer = 3.2;
+              r.speed *= 0.4;
               if (r.id === localPlayerId) soundEngine.playHazardHit();
             }
           }
           pushKillfeed(
-            `❄️ BOSS ĐẶNG MAI KHÁNH phát Sóng Xung Kích Hàn Băng (Đóng băng 2.5s)!`,
+            `❄️ BOSS ĐẶNG MAI KHÁNH phát Sóng Xung Kích Hàn Băng (Đóng băng 3.2s)!`,
             'trap',
             nowSec
           );
         } else if (raidBossDef.id === 'hanh_dung') {
           const perp = bossCar.angle + Math.PI / 2;
-          for (let tIdx = -2; tIdx <= 2; tIdx++) {
+          for (let tIdx = -3; tIdx <= 3; tIdx++) {
             hazards.push({
               id: `boss_tox_${Date.now()}_${tIdx}`,
               type: tIdx % 2 === 0 ? 'boss_toxic' : 'banana',
@@ -1728,11 +1731,11 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               x:
                 bossCar.x -
                 Math.cos(bossCar.angle) * 48 +
-                Math.cos(perp) * (tIdx * 34),
+                Math.cos(perp) * (tIdx * 32),
               y:
                 bossCar.y -
                 Math.sin(bossCar.angle) * 48 +
-                Math.sin(perp) * (tIdx * 34),
+                Math.sin(perp) * (tIdx * 32),
               vx: 0,
               vy: 0,
               angle: 0,
@@ -1742,9 +1745,9 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
             });
           }
           bossCar.bossShieldActive = true;
-          bossShieldRegenTimer = 4.0;
+          bossShieldRegenTimer = 3.0;
           pushKillfeed(
-            `🌸 BOSS TRẦN HẠNH DUNG rải 5 Bẫy Hoa Độc & bật Khiên Sinh Học Hồng Ngọc!`,
+            `🌸 BOSS TRẦN HẠNH DUNG rải 7 Bẫy Hoa Độc & bật Khiên Sinh Học Hồng Ngọc!`,
             'trap',
             nowSec
           );
@@ -1752,16 +1755,16 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
           bossLightningVisualTimer = 1.15;
           for (const r of racers) {
             if (r.isBoss || r.finished || r.invulnerableTimer > 0) continue;
-            if (Math.hypot(r.x - bossCar.x, r.y - bossCar.y) <= 330) {
-              r.stunTimer = Math.max(r.stunTimer, 1.35);
-              r.speed *= 0.3;
+            if (Math.hypot(r.x - bossCar.x, r.y - bossCar.y) <= 480) {
+              r.stunTimer = Math.max(r.stunTimer, 1.8);
+              r.speed *= 0.25;
               if (r.id === localPlayerId) soundEngine.playHazardHit();
             }
           }
           if (bossCar.bossPhase === 2) {
             bossCryoWaveVisualTimer = 1.25;
             const perp = bossCar.angle + Math.PI / 2;
-            for (let tIdx = -2; tIdx <= 2; tIdx++) {
+            for (let tIdx = -3; tIdx <= 3; tIdx++) {
               hazards.push({
                 id: `boss_md_tox_${Date.now()}_${tIdx}`,
                 type: 'boss_toxic',
@@ -1769,11 +1772,11 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
                 x:
                   bossCar.x -
                   Math.cos(bossCar.angle) * 52 +
-                  Math.cos(perp) * (tIdx * 36),
+                  Math.cos(perp) * (tIdx * 32),
                 y:
                   bossCar.y -
                   Math.sin(bossCar.angle) * 52 +
-                  Math.sin(perp) * (tIdx * 36),
+                  Math.sin(perp) * (tIdx * 32),
                 vx: 0,
                 vy: 0,
                 angle: 0,
@@ -1782,7 +1785,7 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
                 isBossHazard: true,
               });
             }
-            for (const spreadAngle of [-0.15, 0.15]) {
+            for (const spreadAngle of [-0.25, -0.1, 0.1, 0.25]) {
               const ang = bossCar.angle + spreadAngle;
               hazards.push({
                 id: `boss_md_msl_${Date.now()}_${spreadAngle}`,
@@ -1790,8 +1793,8 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
                 ownerId: bossCar.id,
                 x: bossCar.x + Math.cos(ang) * 44,
                 y: bossCar.y + Math.sin(ang) * 44,
-                vx: Math.cos(ang) * 630,
-                vy: Math.sin(ang) * 630,
+                vx: Math.cos(ang) * 680,
+                vy: Math.sin(ang) * 680,
                 angle: ang,
                 ttl: 6.5,
                 waypointTargetIdx: bossCar.waypointIndex,
@@ -1844,10 +1847,10 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               const maxH = bossCar.bossMaxHp || bossMaxHp;
               bossCar.bossHp = Math.min(
                 maxH,
-                (bossCar.bossHp || maxH) + Math.round(maxH * 0.05)
+                (bossCar.bossHp || maxH) + Math.round(maxH * 0.08)
               );
               pushKillfeed(
-                `🌸 Khiên Sinh Học Hồng Ngọc hồi +5% HP cho Boss Trần Hạnh Dung!`,
+                `🌸 Khiên Sinh Học Hồng Ngọc hồi +8% HP cho Boss Trần Hạnh Dung!`,
                 'lead',
                 nowSec
               );
@@ -2292,8 +2295,21 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               elapsedRaceSecRef.current = elapsedRaceSec;
             }
 
-            const justFinishedRemotely = remotePos.finished && !r.finished;
-            r.finished = remotePos.finished;
+            const canRemoteBeFinished =
+              Boolean(remotePos.finished) &&
+              elapsedRaceSec > 8.0 &&
+              (remotePos.lap > lobby.laps ||
+                (remotePos.lap === lobby.laps &&
+                  ((remotePos.totalProgress ?? 0) >=
+                    (lobby.laps - 1) * 1000 + 820 ||
+                    remotePos.currentCheckpoint >=
+                      map.checkpointIndices.length - 2 ||
+                    remotePos.currentCheckpoint === 0)));
+
+            const justFinishedRemotely = canRemoteBeFinished && !r.finished;
+            if (canRemoteBeFinished) {
+              r.finished = true;
+            }
             if (justFinishedRemotely) {
               finishCounter++;
               r.finishOrder = finishCounter;
@@ -2317,7 +2333,7 @@ export const RaceCanvas: React.FC<RaceCanvasProps> = ({
               }
               r.finishTimeMs = resolvedFinishMs;
             } else if (!r.finished) {
-              r.finishTimeMs = remotePos.finishTimeMs;
+              r.finishTimeMs = 0;
             }
 
             r.placement = remotePos.placement;

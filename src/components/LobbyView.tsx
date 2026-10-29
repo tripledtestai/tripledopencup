@@ -234,14 +234,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   // Student Join Teacher Room Code state (Requirement #1: Student must enter Teacher room code)
   const [teacherPinInput, setTeacherPinInput] = useState('');
-  const [joinedTeacherPin, setJoinedTeacherPin] = useState<string | null>(null);
+  const [joinedTeacherPin, setJoinedTeacherPin] = useState<string | null>(() => {
+    return !isTeacher &&
+      lobby.playModeCategory === 'teacher_cup' &&
+      lobby.roomPin &&
+      lobby.participants.length > 0
+      ? lobby.roomPin
+      : null;
+  });
   const [teacherPinError, setTeacherPinError] = useState<string | null>(null);
 
   // Student Friends Room Create / Join state (Requirement #2)
   const [_friendSubTab, _setFriendSubTab] = useState<'create' | 'join'>('create');
   const [friendPinInput, setFriendPinInput] = useState('');
   const [joinedFriendPin, setJoinedFriendPin] = useState<string | null>(() => {
-    return lobby.isFriendGuest && lobby.friendRoomPin ? lobby.friendRoomPin : null;
+    return lobby.isFriendGuest && (lobby.friendRoomPin || lobby.roomPin)
+      ? lobby.friendRoomPin || lobby.roomPin
+      : null;
   });
   const [friendRoomFeedback, setFriendRoomFeedback] = useState<{
     ok: boolean;
@@ -249,10 +258,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   } | null>(null);
 
   React.useEffect(() => {
-    if (lobby.isFriendGuest && lobby.friendRoomPin && joinedFriendPin !== lobby.friendRoomPin) {
-      setJoinedFriendPin(lobby.friendRoomPin);
+    const targetPin = lobby.friendRoomPin || lobby.roomPin;
+    if (lobby.isFriendGuest && targetPin && joinedFriendPin !== targetPin) {
+      setJoinedFriendPin(targetPin);
     }
-  }, [lobby.isFriendGuest, lobby.friendRoomPin, joinedFriendPin]);
+  }, [lobby.isFriendGuest, lobby.friendRoomPin, lobby.roomPin, joinedFriendPin]);
 
   React.useEffect(() => {
     if (!friendRoomFeedback) return;
@@ -385,7 +395,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const launchGuestRaceWithLobby = React.useCallback(
     (incomingLobby: LobbyConfig) => {
       if (hasLaunchedRaceRef.current) return;
+
+      // Prevent re-launching a finished race when returning to Lobby via "Đua Tiếp"
+      try {
+        const lastFinishedId = sessionStorage.getItem('tripled_last_finished_race_id');
+        if (
+          incomingLobby.raceSessionId &&
+          lastFinishedId &&
+          incomingLobby.raceSessionId === lastFinishedId
+        ) {
+          return;
+        }
+      } catch {}
+
       hasLaunchedRaceRef.current = true;
+      try {
+        sessionStorage.removeItem('tripled_active_race_resume_v1');
+      } catch {}
+      multiplayerService.clearRaceCaches();
 
       const {
         lobby: curLobby,
@@ -465,7 +492,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
       const clientAuthoritativeLobby: LobbyConfig = {
         ...incomingLobby,
-        isFriendGuest: curMode === 'friends_pvp' ? true : curLobby.isFriendGuest,
+        mapId: incomingLobby.mapId || curLobby.mapId,
+        laps: incomingLobby.laps || curLobby.laps,
+        isFriendGuest:
+          curMode === 'friends_pvp' || curMode === 'raid_boss'
+            ? true
+            : curLobby.isFriendGuest,
         assignedGuestId: myEffectiveId,
         status: 'racing',
         participants: safeParticipants,
@@ -799,6 +831,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
           const activePin = curLobby.friendRoomPin || curLobby.roomPin;
           if (activePin) {
+            if (leaveId) {
+              dualDB.removeParticipantFromRoomRoster(activePin, leaveId);
+            }
             dualDB.syncRoomState(activePin, {
               status: 'waiting',
               lobby: { ...nextLobby, participants: networkParticipants },
@@ -998,6 +1033,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     } else if (activeMode === 'teacher_cup' && isTeacher) {
       const pin = lobby.roomPin || dualDB.generateNewRoomPin();
       multiplayerService.hostRoom(pin, getHostAccount());
+    } else if (activeMode === 'teacher_cup' && !isTeacher && joinedTeacherPin) {
+      multiplayerService.joinRoom(joinedTeacherPin, getHostAccount());
     }
 
     return () => {
@@ -1009,6 +1046,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   }, [
     activeMode,
     joinedFriendPin,
+    joinedTeacherPin,
     lobby.isFriendGuest,
     lobby.friendRoomPin,
     isTeacher,
@@ -1017,17 +1055,158 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     registerFriendRoomInMatchmaking,
   ]);
 
+  // Shared Firebase RTDB Room Roster Sync (`tripled/rooms/${roomPin}/roster`):
+  // Guarantees that when >5 players join a room simultaneously, all machines converge on the exact same 6+ player roster!
+  React.useEffect(() => {
+    const isOnlineRoom =
+      activeMode === 'friends_pvp' ||
+      activeMode === 'raid_boss' ||
+      (activeMode === 'teacher_cup' && (isTeacher || Boolean(joinedTeacherPin)));
+    if (!isOnlineRoom || !activeRoomPin || !fbConnected) return;
+
+    const pushMyPresence = () => {
+      const curState = stateRef.current;
+      if (
+        curState.isTeacher &&
+        curState.activeMode === 'teacher_cup' &&
+        curState.lobby.hostMode === 'spectator'
+      ) {
+        return;
+      }
+      const baseMyId = curState.isTeacher
+        ? 'teacher_host'
+        : curState.currentStudent?.id;
+      const myEffectiveId = curState.lobby.assignedGuestId || baseMyId;
+      if (!myEffectiveId) return;
+
+      const myAuth = dualDB.getAuthoritativeLocalTuning(
+        baseMyId || null,
+        curState.isTeacher
+      );
+      const myEntry: LobbyConfig['participants'][0] = curState.isTeacher
+        ? {
+            id: 'teacher_host',
+            username: curState.teacherProfile.username || 'Thầy/Cô TripleD',
+            rp: curState.teacherProfile.rp || 750,
+            teamId: 1,
+            loadout: curState.teacherProfile.loadout || DEFAULT_LOADOUT,
+            computedStats: myAuth.computedStats,
+            equippedTitle:
+              curState.teacherProfile.equippedTitle || 'title_boss_minh_dang',
+            hasDragonAura: true,
+            isBot: false,
+            isTeacher: true,
+          }
+        : {
+            id: myEffectiveId,
+            username: curState.currentStudent?.username || 'Tay Đua',
+            rp: curState.currentStudent?.rp || 0,
+            teamId: 1,
+            loadout: curState.currentStudent?.loadout || DEFAULT_LOADOUT,
+            computedStats: myAuth.computedStats,
+            equippedTitle: curState.currentStudent?.equippedTitle || null,
+            hasDragonAura: Boolean(curState.currentStudent?.hasDragonAura),
+            isBot: false,
+          };
+      dualDB.syncParticipantToRoomRoster(activeRoomPin, myEntry);
+    };
+
+    pushMyPresence();
+
+    const unsubRoster = dualDB.listenRoomRoster(activeRoomPin, (cloudRoster) => {
+      if (!Array.isArray(cloudRoster) || cloudRoster.length === 0) return;
+      const curState = stateRef.current;
+      const curLobby = curState.lobby;
+      if (curLobby.status === 'racing') return;
+
+      const baseMyId = curState.isTeacher
+        ? 'teacher_host'
+        : curState.currentStudent?.id;
+      const myEffectiveId = curLobby.assignedGuestId || baseMyId;
+      const myAuth = dualDB.getAuthoritativeLocalTuning(
+        baseMyId || null,
+        curState.isTeacher
+      );
+
+      const mergedById = new Map<string, LobbyConfig['participants'][0]>();
+      for (const existing of curLobby.participants || []) {
+        mergedById.set(existing.id.toLowerCase(), existing);
+      }
+      for (const remoteP of cloudRoster) {
+        if (!remoteP || !remoteP.id || remoteP.isBot) continue;
+        const key = remoteP.id.toLowerCase();
+        const prev = mergedById.get(key);
+        const isMe =
+          Boolean(myEffectiveId) && key === myEffectiveId!.toLowerCase();
+        mergedById.set(key, {
+          ...(prev || {}),
+          ...remoteP,
+          teamId: prev?.teamId || remoteP.teamId || 1,
+          tuningLoadout: isMe ? myAuth.tuningLoadout : prev?.tuningLoadout,
+          computedStats: isMe
+            ? myAuth.computedStats
+            : remoteP.computedStats ||
+              prev?.computedStats ||
+              buildComputedStats(remoteP.tuningLoadout),
+          isBot: false,
+        });
+      }
+
+      const nextParticipants = Array.from(mergedById.values());
+      const curIds = (curLobby.participants || [])
+        .map((p) => p.id.toLowerCase())
+        .sort()
+        .join(',');
+      const nextIds = nextParticipants
+        .map((p) => p.id.toLowerCase())
+        .sort()
+        .join(',');
+
+      if (curIds !== nextIds) {
+        dualDB.updateLobby({ participants: nextParticipants });
+      }
+    });
+
+    return () => {
+      unsubRoster();
+    };
+  }, [
+    activeMode,
+    activeRoomPin,
+    fbConnected,
+    isTeacher,
+    joinedTeacherPin,
+    joinedFriendPin,
+    currentStudent?.id,
+    teacherProfile.id,
+  ]);
+
   // Listen to Firebase roomState on Guest so if START_RACE or LOBBY_UPDATE event was missed, Guest still syncs & enters race 100% reliably!
   React.useEffect(() => {
     const isGuestSession =
-      (activeMode === 'friends_pvp' && (joinedFriendPin || lobby.isFriendGuest)) ||
+      ((activeMode === 'friends_pvp' || activeMode === 'raid_boss') &&
+        (joinedFriendPin || lobby.isFriendGuest)) ||
       (activeMode === 'teacher_cup' && !isTeacher && joinedTeacherPin);
     if (!isGuestSession || !activeRoomPin || !fbConnected) return;
 
     return dualDB.listenRoomState(activeRoomPin, (roomData) => {
       if (!roomData || typeof roomData !== 'object') return;
       if (roomData.status === 'racing' && roomData.lobby) {
-        launchGuestRaceWithLobby(roomData.lobby as LobbyConfig);
+        const incomingRaceLobby = roomData.lobby as LobbyConfig;
+        const incomingSessionId =
+          roomData.raceSessionId || incomingRaceLobby.raceSessionId;
+        try {
+          const lastFinishedId = sessionStorage.getItem(
+            'tripled_last_finished_race_id'
+          );
+          if (incomingSessionId && lastFinishedId && incomingSessionId === lastFinishedId) {
+            return;
+          }
+        } catch {}
+        launchGuestRaceWithLobby({
+          ...incomingRaceLobby,
+          raceSessionId: incomingSessionId,
+        });
         return;
       }
       if (roomData.lobby && typeof roomData.lobby === 'object') {
@@ -1042,39 +1221,63 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           stateRef.current.isTeacher
         );
 
+        let syncedParticipants = curLobby.participants || [];
         if (
           Array.isArray(remoteLobby.participants) &&
           remoteLobby.participants.length > 0
         ) {
-          const syncedParticipants = remoteLobby.participants.map((p) =>
-            myEffectiveId && p.id.toLowerCase() === myEffectiveId.toLowerCase()
-              ? {
-                  ...p,
-                  tuningLoadout: myAuth.tuningLoadout,
-                  computedStats: myAuth.computedStats,
-                }
-              : p
-          );
-          const currentIds = (curLobby.participants || []).map((p) => p.id).join(',');
-          const nextIds = syncedParticipants.map((p) => p.id).join(',');
-          if (
-            currentIds !== nextIds ||
-            curLobby.mapId !== remoteLobby.mapId ||
-            curLobby.laps !== remoteLobby.laps ||
-            curLobby.botDifficulty !== remoteLobby.botDifficulty
-          ) {
-            dualDB.updateLobby({
-              mapId: remoteLobby.mapId || curLobby.mapId,
-              laps: remoteLobby.laps || curLobby.laps,
-              botDifficulty: remoteLobby.botDifficulty || curLobby.botDifficulty,
-              isFriendGuest:
-                stateRef.current.activeMode === 'friends_pvp'
-                  ? true
-                  : curLobby.isFriendGuest,
-              assignedGuestId: curLobby.assignedGuestId,
-              participants: syncedParticipants,
+          const byId = new Map<string, LobbyConfig['participants'][0]>();
+          for (const rp of remoteLobby.participants) {
+            const isMe =
+              Boolean(myEffectiveId) &&
+              rp.id.toLowerCase() === myEffectiveId!.toLowerCase();
+            byId.set(rp.id.toLowerCase(), {
+              ...rp,
+              tuningLoadout: isMe ? myAuth.tuningLoadout : rp.tuningLoadout,
+              computedStats: isMe
+                ? myAuth.computedStats
+                : rp.computedStats || buildComputedStats(rp.tuningLoadout),
             });
           }
+          // Preserve any locally known human participant from room roster so no one is dropped
+          for (const lp of curLobby.participants || []) {
+            if (!lp.isBot && !byId.has(lp.id.toLowerCase())) {
+              byId.set(lp.id.toLowerCase(), lp);
+            }
+          }
+          syncedParticipants = Array.from(byId.values());
+        }
+
+        const currentIds = (curLobby.participants || []).map((p) => p.id).join(',');
+        const nextIds = syncedParticipants.map((p) => p.id).join(',');
+        if (
+          currentIds !== nextIds ||
+          curLobby.mapId !== remoteLobby.mapId ||
+          curLobby.laps !== remoteLobby.laps ||
+          curLobby.botDifficulty !== remoteLobby.botDifficulty ||
+          curLobby.raceMode !== remoteLobby.raceMode ||
+          curLobby.teamCount !== remoteLobby.teamCount ||
+          curLobby.raidBossId !== remoteLobby.raidBossId
+        ) {
+          dualDB.updateLobby({
+            mapId: remoteLobby.mapId || curLobby.mapId,
+            laps: remoteLobby.laps || curLobby.laps,
+            botDifficulty: remoteLobby.botDifficulty || curLobby.botDifficulty,
+            raceMode: remoteLobby.raceMode || curLobby.raceMode,
+            teamCount: remoteLobby.teamCount || curLobby.teamCount,
+            raidBossId: remoteLobby.raidBossId ?? curLobby.raidBossId,
+            raidBossModeEnabled:
+              remoteLobby.raidBossModeEnabled ?? curLobby.raidBossModeEnabled,
+            bossControlMode:
+              remoteLobby.bossControlMode ?? curLobby.bossControlMode,
+            isFriendGuest:
+              stateRef.current.activeMode === 'friends_pvp' ||
+              stateRef.current.activeMode === 'raid_boss'
+                ? true
+                : curLobby.isFriendGuest,
+            assignedGuestId: curLobby.assignedGuestId,
+            participants: syncedParticipants,
+          });
         }
       }
     });
@@ -1154,6 +1357,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       return;
     }
     const kicked = lobby.participants.find((p) => p.id === targetId);
+    if (activeRoomPin) {
+      dualDB.removeParticipantFromRoomRoster(activeRoomPin, targetId);
+    }
     multiplayerService.broadcast({
       type: 'KICK_PLAYER',
       playerId: targetId,
@@ -1647,10 +1853,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     if (isHost) {
       if (activeRoomPin) {
         dualDB.removeMatchmakingRoom(activeRoomPin);
+        dualDB.clearRoomRoster(activeRoomPin);
         dualDB.removeRoomState(activeRoomPin);
       }
       multiplayerService.leaveRoom(myEffectiveId, true);
     } else {
+      if (activeRoomPin && myEffectiveId) {
+        dualDB.removeParticipantFromRoomRoster(activeRoomPin, myEffectiveId);
+      }
       multiplayerService.leaveRoom(myEffectiveId, false);
     }
     setJoinedFriendPin(null);
@@ -1726,6 +1936,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     if (activeMode === 'teacher_cup' && !isTeacher) return;
 
     hasLaunchedRaceRef.current = true;
+    try {
+      sessionStorage.removeItem('tripled_active_race_resume_v1');
+    } catch {}
+    multiplayerService.clearRaceCaches();
+    if (activeRoomPin) {
+      dualDB.clearRoomRaceData(activeRoomPin);
+    }
+
+    const raceSessionId = `race_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const myId = isTeacher ? 'teacher_host' : currentStudent?.id || null;
     const localAuth = dualDB.getAuthoritativeLocalTuning(myId, isTeacher);
     activePhysicsRef.current = localAuth.physics;
@@ -1753,6 +1972,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       botDifficulty,
       teacherRewards,
       status: 'racing',
+      raceSessionId,
       participants: finalRoster,
     };
 
@@ -1778,6 +1998,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       if (activeRoomPin) {
         dualDB.syncRoomState(activeRoomPin, {
           status: 'racing',
+          raceSessionId,
           hostId: myId || 'host',
           lobby: networkSafeLobby,
           updatedAt: Date.now(),

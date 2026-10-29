@@ -764,6 +764,29 @@ export default function App() {
       }
     }
 
+    try {
+      sessionStorage.removeItem('tripled_active_race_resume_v1');
+      if (lobby.raceSessionId) {
+        sessionStorage.setItem(
+          'tripled_last_finished_race_id',
+          lobby.raceSessionId
+        );
+      }
+    } catch {}
+
+    const activePin = lobby.friendRoomPin || lobby.roomPin;
+    const isRoomHost =
+      lobby.playModeCategory === 'teacher_cup'
+        ? isTeacher
+        : !lobby.isFriendGuest && multiplayerService.getStatus().isHost;
+
+    if (activePin && lobby.playModeCategory !== 'practice_ai' && lobby.playModeCategory !== 'solo_campaign') {
+      dualDB.resetRoomForNextRace(activePin, isRoomHost, {
+        ...lobby,
+        status: 'waiting',
+      });
+    }
+
     dualDB.updateLobby({ status: 'finished' });
     setPodiumData({
       results,
@@ -800,13 +823,31 @@ export default function App() {
         onExitRace={() => {
           try {
             sessionStorage.removeItem('tripled_active_race_resume_v1');
+            if (lobby.raceSessionId) {
+              sessionStorage.setItem(
+                'tripled_last_finished_race_id',
+                lobby.raceSessionId
+              );
+            }
           } catch {}
           setIsRacePaused(false);
           setPodiumData(null);
           multiplayerService.clearRaceCaches();
+          const activePin = lobby.friendRoomPin || lobby.roomPin;
+          const isRoomHost =
+            lobby.playModeCategory === 'teacher_cup'
+              ? isTeacher
+              : !lobby.isFriendGuest && multiplayerService.getStatus().isHost;
+          if (activePin && isRoomHost) {
+            dualDB.resetRoomForNextRace(activePin, true, {
+              ...lobby,
+              status: 'waiting',
+            });
+          }
+          const updated = dualDB.updateLobby({ status: 'waiting' });
+          setLobby(updated);
           setScreen(
-            lobby.playModeCategory === 'solo_campaign' ||
-              lobby.playModeCategory === 'raid_boss'
+            lobby.playModeCategory === 'solo_campaign'
               ? 'menu'
               : 'lobby'
           );
@@ -831,9 +872,50 @@ export default function App() {
         campaignSummary={podiumData.campaignSummary}
         raidSummary={podiumData.raidSummary}
         onPlayAgainLobby={() => {
+          try {
+            sessionStorage.removeItem('tripled_active_race_resume_v1');
+            if (lobby.raceSessionId) {
+              sessionStorage.setItem(
+                'tripled_last_finished_race_id',
+                lobby.raceSessionId
+              );
+            }
+          } catch {}
           setPodiumData(null);
           multiplayerService.clearRaceCaches();
-          const updated = dualDB.updateLobby({ status: 'waiting' });
+
+          const activePin = lobby.friendRoomPin || lobby.roomPin;
+          const isRoomHost =
+            lobby.playModeCategory === 'teacher_cup'
+              ? isTeacher
+              : !lobby.isFriendGuest && multiplayerService.getStatus().isHost;
+
+          const nextPlayMode =
+            lobby.playModeCategory === 'quick_match'
+              ? 'friends_pvp'
+              : lobby.playModeCategory;
+
+          const updated = dualDB.updateLobby({
+            status: 'waiting',
+            playModeCategory: nextPlayMode,
+            friendRoomPin:
+              nextPlayMode === 'friends_pvp' || nextPlayMode === 'raid_boss'
+                ? activePin
+                : lobby.friendRoomPin,
+            isFriendGuest:
+              nextPlayMode === 'friends_pvp' || nextPlayMode === 'raid_boss'
+                ? !isRoomHost
+                : lobby.isFriendGuest,
+          });
+
+          if (
+            activePin &&
+            nextPlayMode !== 'practice_ai' &&
+            nextPlayMode !== 'solo_campaign'
+          ) {
+            dualDB.resetRoomForNextRace(activePin, isRoomHost, updated);
+          }
+
           setLobby(updated);
           setScreen(
             lobby.playModeCategory === 'solo_campaign'
@@ -842,6 +924,15 @@ export default function App() {
           );
         }}
         onBackToMainMenu={() => {
+          try {
+            sessionStorage.removeItem('tripled_active_race_resume_v1');
+            if (lobby.raceSessionId) {
+              sessionStorage.setItem(
+                'tripled_last_finished_race_id',
+                lobby.raceSessionId
+              );
+            }
+          } catch {}
           setPodiumData(null);
           multiplayerService.clearRaceCaches();
           const updated = dualDB.updateLobby({ status: 'waiting' });

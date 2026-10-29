@@ -186,6 +186,7 @@ class MultiplayerService {
   private bcConnected: boolean = false;
   private currentPingMs: number = 0;
   private lastPingSentTime: number = 0;
+  private raceCacheClearedAt: number = 0;
   public readonly clientSessionId: string = Math.random()
     .toString(36)
     .substring(2, 8);
@@ -221,6 +222,7 @@ class MultiplayerService {
   }
 
   public clearRaceCaches() {
+    this.raceCacheClearedAt = Date.now();
     this.latestRemoteRacers.clear();
     this.latestRemoteHazards = [];
     this.latestRemoteBumps = [];
@@ -270,12 +272,39 @@ class MultiplayerService {
     ) {
       return;
     }
-    // Preserve finished state once a remote racer has crossed the finish line
-    const finished = Boolean(data.finished || prev?.finished);
+
+    // Ignore stale position snapshots from a previous race before clearRaceCaches()
+    if (
+      this.raceCacheClearedAt > 0 &&
+      data.timestamp &&
+      data.timestamp < this.raceCacheClearedAt - 1500
+    ) {
+      return;
+    }
+
+    // Never allow a stale `finished: true` state to stick when the racer is on Lap 1 at the start of a race!
+    const isEarlyRacePacket =
+      (typeof data.elapsedRaceSec === 'number' && data.elapsedRaceSec < 8) ||
+      (data.lap <= 1 && (data.totalProgress ?? 0) < 800 && !data.finished);
+
+    const canTrustIncomingFinish =
+      Boolean(data.finished) &&
+      !isEarlyRacePacket &&
+      (typeof data.elapsedRaceSec !== 'number' || data.elapsedRaceSec > 6);
+
+    const canPreservePrevFinish =
+      Boolean(prev?.finished) &&
+      !isEarlyRacePacket &&
+      (prev?.timestamp || 0) >= this.raceCacheClearedAt &&
+      (prev?.lap || 1) >= (data.lap || 1);
+
+    const finished = Boolean(canTrustIncomingFinish || canPreservePrevFinish);
     const finishTimeMs =
       finished && prev?.finished && prev.finishTimeMs > 0
         ? prev.finishTimeMs
-        : data.finishTimeMs;
+        : finished
+        ? data.finishTimeMs
+        : 0;
     this.latestRemoteRacers.set(data.id, {
       ...data,
       finished,
@@ -309,8 +338,11 @@ class MultiplayerService {
           this.latestRemoteBumps.push(msg.bump);
         }
       } else if (msg.type === 'RACER_FINISHED') {
+        if (this.raceCacheClearedAt > 0 && (rawEvt._ts || 0) < this.raceCacheClearedAt) {
+          return;
+        }
         const prev = this.latestRemoteRacers.get(msg.racerId);
-        if (prev) {
+        if (prev && (prev.elapsedRaceSec === undefined || prev.elapsedRaceSec > 6)) {
           this.latestRemoteRacers.set(msg.racerId, {
             ...prev,
             finished: true,
@@ -861,24 +893,17 @@ class MultiplayerService {
         this.peerToPlayerId.delete(conn.peer);
         if (playerId) {
           this.playerIdToPeer.delete(playerId);
-          const leaveMsg: NetworkMessage = {
-            type: 'LEAVE_ROOM',
-            participantId: playerId,
-            isHost: false,
-            reason: 'disconnected',
-          };
-          this.messageListeners.forEach((fn) => fn(leaveMsg, conn));
-          this.broadcastExcept(leaveMsg, conn.peer);
         }
+        // IMPORTANT: Do NOT synthesize LEAVE_ROOM when a WebRTC connection closes!
+        // In >5 player rooms, WebRTC P2P connections frequently flap or drop due to NAT/ICE limits
+        // while Firebase RTDB & BroadcastChannel remain 100% active. Only explicit leaveRoom()
+        // should remove a player from the lobby!
       } else {
         this.hostConnection = null;
-        const hostLeftMsg: NetworkMessage = {
-          type: 'HOST_LEFT',
-          reason: 'host_disconnected',
-        };
-        this.messageListeners.forEach((fn) => fn(hostLeftMsg, conn));
+        // IMPORTANT: Do NOT synthesize HOST_LEFT on WebRTC close so guests are never kicked out
+        // of the room when P2P falls back to Firebase RTDB Cloud Sync!
       }
-      this.notifyStatus();
+      this.notifyStatus(null);
     });
 
     conn.on('error', () => {
@@ -888,24 +913,11 @@ class MultiplayerService {
         this.peerToPlayerId.delete(conn.peer);
         if (playerId) {
           this.playerIdToPeer.delete(playerId);
-          const leaveMsg: NetworkMessage = {
-            type: 'LEAVE_ROOM',
-            participantId: playerId,
-            isHost: false,
-            reason: 'connection_error',
-          };
-          this.messageListeners.forEach((fn) => fn(leaveMsg, conn));
-          this.broadcastExcept(leaveMsg, conn.peer);
         }
       } else {
         this.hostConnection = null;
-        const hostLeftMsg: NetworkMessage = {
-          type: 'HOST_LEFT',
-          reason: 'host_connection_error',
-        };
-        this.messageListeners.forEach((fn) => fn(hostLeftMsg, conn));
       }
-      this.notifyStatus('Mất kết nối với người chơi.');
+      this.notifyStatus(null);
     });
   }
 
